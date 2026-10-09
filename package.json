@@ -1,0 +1,7 @@
+{
+  "name": "auto-recruit",
+  "private": true,
+  "scripts": {
+    "prototype": "pnpm --dir apps/prototype-user-flows install && pnpm --dir apps/prototype-user-flows dev"
+  }
+}
