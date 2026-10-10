@@ -66,4 +66,5 @@ Mark each person `Applied` in the Batch file as soon as their outcome below is w
 
 ## 4. Report
 
-Say how many were approved, how many numbers were found (Exa charges about $0.07 per number found), how many people were skipped and which Prospects were skipped, then show the top of the Call List and offer `call 1`.
+Say how many were approved, how many numbers were found (Exa charges about $0.07 per number found), how many people were skipped and which Prospects were skipped.
+List by name the people kept without a number, so the Recruiter can find one another way, then show the top of the Call List and offer `call 1`.

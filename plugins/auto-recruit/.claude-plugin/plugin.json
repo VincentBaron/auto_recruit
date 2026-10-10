@@ -1,6 +1,6 @@
 {
   "name": "auto-recruit",
   "description": "An agentic recruitment desk: define a Niche, approve Batches of people found by Exa, and work the Call List from Claude.",
-  "version": "0.1.6",
+  "version": "0.1.8",
   "author": { "name": "Vincent Baron" }
 }

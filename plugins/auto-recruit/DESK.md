@@ -29,7 +29,8 @@ A person leaves the Call List without leaving their file: the history stays.
 - A Batch proposes at most one Hiring Contact per Prospect.
 - A Candidate and a Hiring Contact are separate records even when they are the same human.
 - Phone numbers are written in international format (`+33612345678`), followed by where and when they were found: `+33612345678 (Exa, 2026-10-12)`.
-- When Exa finds no number, the file says `Phone: not found (Exa, 2026-10-12)` and the person stays on the Call List; a number the Recruiter finds elsewhere replaces it as `+33612345678 (Recruiter, 2026-10-13)`.
+- A person without a working number stays on the Call List, and their file says why: `Phone: not found (Exa, 2026-10-12)` or `Phone: wrong, was +33612345678 (Recruiter, 2026-10-13)`.
+  A number the Recruiter finds elsewhere replaces it as `+33612345678 (Recruiter, 2026-10-14)`.
 
 ## Dates
 

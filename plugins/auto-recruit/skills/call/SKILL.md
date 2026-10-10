@@ -11,6 +11,7 @@ Read [`../../DESK.md`](../../DESK.md) first: it holds the desk's files and forma
 ## Show the Call List
 
 With no entry number, show `CALL_LIST.md` with the entries due now on top.
+Flag the entries with no working number (not found or wrong), so the Recruiter can look for one before calling.
 When fewer than 10 entries are due today, offer a Batch: `/auto-recruit:batch <niche>`.
 
 ## Call an entry
@@ -18,7 +19,7 @@ When fewer than 10 entries are due today, offer a Batch: `/auto-recruit:batch <n
 1. Find the entry, open the person's file and show the Call Sheet, the Why Now, the previous Attempts in one line each, and the Pitch's ask and objections from the Niche.
 2. Check the person, and their Prospect, against `DO_NOT_CALL.md` and the `Parked until` line; check they have fewer than 4 Attempts in the last 30 days.
    If any check fails, say which, fix the Call List, and offer the next entry instead.
-3. When the file has no number, ask the Recruiter for one they found elsewhere and write it to the file; without one, offer the next entry.
+3. When the file has no working number, say so and ask the Recruiter for one they found elsewhere, then write it to the file; without one, offer the next entry.
    Dial on the Recruiter's Android phone: `adb shell am start -a android.intent.action.CALL -d tel:+33612345678` (the number in international format, no spaces).
    When `adb devices` lists no phone, show the number and how to connect it: a USB cable with USB debugging on, or Wireless debugging with `adb pair` once, then `adb connect <ip:port>`.
 4. Wait for the recap.
@@ -40,7 +41,7 @@ Then, in this order:
 | Interested | Removed | Each next step (meeting, profiles to send, intro) goes to `TODO.md`, linking the person's file |
 | Not Now | Due in 3 months, or on the date they gave | |
 | Not Interested | Removed; for a Hiring Contact, every Hiring Contact of that Prospect is removed | Hiring Contact: the Prospect file gets `Parked until` 6 months from today |
-| Wrong Number | One new phone search with Exa `agent_run`: found, due the next working day; not found, removed | The new number replaces the old one in the file |
+| Wrong Number | Due the next working day | The phone line becomes `Phone: wrong, was +33612345678 (Recruiter, 2026-10-13)`; tell the Recruiter the number must be found another way |
 | Do Not Call | Removed, with their Prospect's contacts when they spoke for the company | Added to `DO_NOT_CALL.md` |
 
 3. After a No Answer or a Voicemail, count the Attempts of the last 30 days: at the 4th, the person is due in 3 months instead.
