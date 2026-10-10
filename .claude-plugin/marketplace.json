@@ -1,0 +1,14 @@
+{
+  "name": "auto-recruit",
+  "owner": {
+    "name": "Vincent Baron"
+  },
+  "description": "Auto Recruit, an agentic recruitment desk run from Claude.",
+  "plugins": [
+    {
+      "name": "auto-recruit",
+      "source": "./plugins/auto-recruit",
+      "description": "An agentic recruitment desk: define a Niche, approve Batches of people found by Exa, and work the Call List from Claude."
+    }
+  ]
+}
