@@ -17,25 +17,32 @@ function realPathOf(path: string): string {
   return join(realpathSync(existing), relative(existing, path));
 }
 
-function insideDesk(desk: string, path: string): boolean {
-  const root = realpathSync(desk);
-  const rel = relative(root, realPathOf(resolve(desk, path)));
+/** Whether `path`, resolved from the Desk, is inside `folder` and not in its git folder. */
+function inside(folder: string, desk: string, path: string): boolean {
+  const rel = relative(realpathSync(folder), realPathOf(resolve(desk, path)));
   if (rel === "") return true;
   if (rel.startsWith("..") || isAbsolute(rel)) return false;
   return rel.split("/")[0] !== ".git";
 }
+
+const insideDesk = (desk: string, path: string) => inside(desk, desk, path);
 
 /** Whether a glob pattern could match outside the Desk: absolute, or going through a parent folder. */
 function escapingPattern(pattern: string): boolean {
   return isAbsolute(pattern) || pattern.split("/").includes("..");
 }
 
-/** The one place that decides what a turn may do: its Desk folder, the date, the Skill tool and Exa (ADR 0028). */
-export function decideTool(desk: string, tool: string, input: Record<string, unknown>): ToolDecision {
+/**
+ * The one place that decides what a turn may do: its Desk folder, the date, the Skill tool and Exa (ADR 0028).
+ * `readOnly` folders can be read but not written, such as the plugin, whose skills read its `DESK.md`.
+ */
+export function decideTool(desk: string, tool: string, input: Record<string, unknown>, readOnly: string[] = []): ToolDecision {
   if (FILE_TOOLS.has(tool)) {
     const path = input.file_path;
     if (typeof path !== "string" || path === "") return deny("A file path is required.");
-    return insideDesk(desk, path) ? allow : deny("Files outside your Desk are off limits.");
+    if (insideDesk(desk, path)) return allow;
+    if (tool === "Read" && readOnly.some((folder) => inside(folder, desk, path))) return allow;
+    return deny("Files outside your Desk are off limits.");
   }
   if (SEARCH_TOOLS.has(tool)) {
     const path = input.path;

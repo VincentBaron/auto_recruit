@@ -1,4 +1,4 @@
-import { query } from "@anthropic-ai/claude-agent-sdk";
+import { query, type HookCallback } from "@anthropic-ai/claude-agent-sdk";
 import type { AgentRunner, TurnRequest, TurnResult } from "./engine.ts";
 import { decideTool } from "./desk-guard.ts";
 
@@ -11,6 +11,24 @@ export interface SdkRunnerOptions {
 
 const LANGUAGE_RULE =
   "You are talking to a Recruiter in a chat on their phone. Answer in the language they write in, briefly, in plain text without markdown tables.";
+
+/**
+ * The Desk guard as a PreToolUse hook: it runs on every tool call, including the ones a skill's `allowed-tools`
+ * pre-approves, which never reach `canUseTool`.
+ */
+export function deskGuardHook(desk: string, pluginPath: string): HookCallback {
+  return async (input) => {
+    if (input.hook_event_name !== "PreToolUse") return {};
+    const decision = decideTool(desk, input.tool_name, (input.tool_input ?? {}) as Record<string, unknown>, [pluginPath]);
+    return {
+      hookSpecificOutput: {
+        hookEventName: "PreToolUse",
+        permissionDecision: decision.behavior,
+        permissionDecisionReason: decision.behavior === "deny" ? decision.message : undefined,
+      },
+    };
+  };
+}
 
 /** Runs a turn on the Claude Agent SDK, inside one Desk folder, with only the tools the Desk guard allows. */
 export class SdkRunner implements AgentRunner {
@@ -30,11 +48,9 @@ export class SdkRunner implements AgentRunner {
           exa: { type: "http", url: "https://mcp.exa.ai/mcp", headers: { "x-api-key": this.options.exaApiKey } },
         },
         systemPrompt: { type: "preset", preset: "claude_code", append: LANGUAGE_RULE },
-        permissionMode: "default",
-        canUseTool: async (tool, input) => {
-          const decision = decideTool(desk, tool, input);
-          return decision.behavior === "allow" ? { behavior: "allow", updatedInput: input } : decision;
-        },
+        // The hook decides every call; anything it lets through to the permission system is refused, never asked.
+        hooks: { PreToolUse: [{ hooks: [deskGuardHook(desk, this.options.pluginPath)] }] },
+        permissionMode: "dontAsk",
       },
     });
 

@@ -49,6 +49,18 @@ describe("a turn stays inside its Desk folder", () => {
     expect(allowed("Write", { file_path: ".git/config" })).toBe(false);
   });
 
+  it("reads the plugin folder but never writes to it", () => {
+    const plugin = join(root, "plugin");
+    mkdirSync(plugin);
+    writeFileSync(join(plugin, "DESK.md"), "formats");
+    const decide = (tool: string, file_path: string) => decideTool(desk, tool, { file_path }, [plugin]).behavior;
+    expect(decide("Read", join(plugin, "DESK.md"))).toBe("allow");
+    expect(decide("Read", "../plugin/DESK.md")).toBe("allow");
+    expect(decide("Write", join(plugin, "DESK.md"))).toBe("deny");
+    expect(decide("Edit", join(plugin, "DESK.md"))).toBe("deny");
+    expect(decide("Read", join(root, "desk2", "CALL_LIST.md"))).toBe("deny");
+  });
+
   it("refuses a missing path", () => {
     expect(allowed("Read", {})).toBe(false);
   });
@@ -71,6 +83,7 @@ describe("the only shell is reading the date", () => {
       "date | sh",
       "date -s '2020-01-01'",
       "date > x",
+      "date -f /etc/passwd",
     ]) {
       expect(allowed("Bash", { command }), command).toBe(false);
     }
