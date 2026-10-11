@@ -8,3 +8,5 @@ Git gives history and backup for free, every fact can be read and corrected by h
 - One fact lives in one file: `CALL_LIST.md` owns who is called next and when; each Prospect or Candidate file owns who they are and what happened on each Attempt.
 - Deduplication and "never propose again" rely on searching the files (LinkedIn URL), `SKIPPED.md` and `DO_NOT_CALL.md`; this holds for thousands of people, not millions.
 - Multiple Recruiters, Claims, Credits and data isolation between agencies are deliberately absent and come back with the agency product.
+
+Amended by ADR 0027: there are now several Recruiters, each with their own Desk on our server.

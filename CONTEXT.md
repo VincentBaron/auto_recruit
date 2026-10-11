@@ -1,6 +1,6 @@
 # Auto Recruit
 
-An agentic recruitment agency run from Claude.
+An agentic recruitment agency a Recruiter runs from a chat on their phone.
 Agents find companies likely to hire and candidates likely to move within a Recruiter's Niche, find their phone numbers and prepare what to say.
 The Recruiter makes the calls; agents never contact anyone by email or by voice.
 
@@ -10,7 +10,18 @@ The Recruiter makes the calls; agents never contact anyone by email or by voice.
 
 **Recruiter**:
 The person who sets up Niches, approves Batches and makes the calls.
+Each Recruiter works alone on their own Desk.
 _Avoid_: User, agent
+
+**Desk**:
+Everything one Recruiter's agents know and have done: their Niches, Batches, people, Call List, Skipped and Do-Not-Call Lists.
+No Recruiter ever sees another Recruiter's Desk.
+_Avoid_: Workspace, account, tenant
+
+**Allowance**:
+The Batches and the money for phone numbers a Recruiter can spend in a month.
+Once it is used up, no Batch starts and no number is bought until it is raised or the month ends.
+_Avoid_: Budget, credits, quota
 
 **Niche**:
 A Recruiter's specialisation: the sectors, company sizes, locations and role types they place.
@@ -93,6 +104,10 @@ Due callbacks come first; people not reached come back after a delay until they 
 You call a Hiring Contact, never a Prospect: the Prospect is the company the Hiring Contact belongs to.
 _Avoid_: Today, todo list, feed, leads list, call queue
 
+**Morning Rundown**:
+The message a Recruiter gets at the start of each working day with something due: the calls due today, Callbacks with their times, Batches waiting for review, and a warning when the Call List or the Allowance runs low.
+_Avoid_: Brief, digest, today
+
 **Pitch**:
 What the Recruiter says to one audience of a Niche: who they are, what they offer, what they ask for and how to answer the usual objections.
 Each Niche has one Pitch for Hiring Contacts and one for Candidates.
@@ -104,6 +119,10 @@ _Avoid_: Script, card, brief
 
 **Attempt**:
 One dialling of a Hiring Contact or Candidate, whatever its Call Outcome.
+
+**Recap**:
+What the Recruiter says happened on a call, as a voice note, a few words or one tap, which the agents turn into the Attempt, its Call Outcome and any follow-up.
+_Avoid_: Debrief, notes, log
 
 **Call Outcome**:
 What happened on one Attempt: No Answer, Voicemail, Callback, Interested, Not Now, Not Interested, Wrong Number or Do Not Call.
