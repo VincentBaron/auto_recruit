@@ -1,0 +1,16 @@
+[Unit]
+Description=Auto Recruit Telegram bot
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=autorecruit
+WorkingDirectory=/opt/auto_recruit/bot
+EnvironmentFile=/etc/auto-recruit/env
+Environment=AUTO_RECRUIT_DATA=/srv/auto-recruit
+ExecStart=/usr/bin/npm start
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
