@@ -1,9 +1,10 @@
-import { existsSync, mkdirSync, readdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, readFileSync } from "node:fs";
 import { join, relative } from "node:path";
 import { parseAdminCommand, type AdminCommand } from "./admin.ts";
 import type { Allowances } from "./allowance.ts";
 import type { Engine, TurnHooks } from "./engine.ts";
 import type { Invites } from "./invites.ts";
+import { writeJsonAtomic } from "./json-file.ts";
 import { DEFAULT_TIMEZONE, type Registry } from "./registry.ts";
 
 /** Who is writing, as the channel knows them. */
@@ -165,9 +166,7 @@ export class Concierge {
         store[key] = entry;
       }
     }
-    const tmp = `${this.options.failuresFile}.tmp`;
-    writeFileSync(tmp, JSON.stringify(store, null, 2));
-    renameSync(tmp, this.options.failuresFile);
+    writeJsonAtomic(this.options.failuresFile, store);
     return twice;
   }
 }

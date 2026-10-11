@@ -34,7 +34,7 @@ export function exaErrorsIn(message: unknown, pending: Map<string, string>): Exa
     if (block.type === "tool_use" && block.id && block.name?.startsWith("mcp__exa__")) {
       pending.set(block.id, block.name);
     } else if (block.type === "tool_result" && block.tool_use_id && pending.has(block.tool_use_id)) {
-      if (block.is_error) errors.push({ tool: pending.get(block.tool_use_id)!, message: textOf(block.content).slice(0, 300) });
+      if (block.is_error) errors.push({ tool: pending.get(block.tool_use_id)!, message: textOf(block.content).slice(0, 300) /* enough for Vincent to read in a ping */ });
       pending.delete(block.tool_use_id);
     }
   }

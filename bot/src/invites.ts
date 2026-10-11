@@ -1,5 +1,6 @@
 import { randomBytes } from "node:crypto";
-import { existsSync, readFileSync, renameSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
+import { writeJsonAtomic } from "./json-file.ts";
 
 /** A start code: 1 to 64 characters of letters, digits, `_` and `-`, the only ones Telegram passes on. */
 export const INVITE_CODE = /^[A-Za-z0-9_-]{1,64}$/;
@@ -20,11 +21,8 @@ export interface Invites {
 
 export function loadInvites(file: string): Invites {
   const read = (): Record<string, Invite> => (existsSync(file) ? JSON.parse(readFileSync(file, "utf8")) : {});
-  const write = (invites: Record<string, Invite>) => {
-    const tmp = `${file}.tmp`;
-    writeFileSync(tmp, JSON.stringify(invites, null, 2));
-    renameSync(tmp, file);
-  };
+  const write = (invites: Record<string, Invite>) => writeJsonAtomic(file, invites);
+  // Both methods are synchronous from read to write, so two redemptions of one code can never interleave.
   return {
     create(name) {
       const invites = read();

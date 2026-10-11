@@ -1,6 +1,7 @@
-import { existsSync, readdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join, relative, resolve } from "node:path";
 import type { ToolDecision } from "./desk-guard.ts";
+import { writeJsonAtomic } from "./json-file.ts";
 
 export const DEFAULT_BATCHES = 4;
 export const DEFAULT_EUROS = 50;
@@ -127,9 +128,7 @@ export class Allowances {
     const allowance = this.read(desk);
     change(allowance);
     all[desk] = allowance;
-    const tmp = `${this.options.file}.tmp`;
-    writeFileSync(tmp, JSON.stringify(all, null, 2));
-    renameSync(tmp, this.options.file);
+    writeJsonAtomic(this.options.file, all);
   }
 }
 
@@ -156,7 +155,7 @@ export function decideAllowance(
     return allow;
   }
   if (tool === "mcp__exa__agent_run") {
-    const buysNumbers = JSON.stringify(input).includes('"phone"');
+    const buysNumbers = JSON.stringify(input).includes('"phone"') // the field is typed `format: "phone"` somewhere in the run's input;
     const openBatch = existsSync(join(desk, "batches")) && readdirSync(join(desk, "batches")).length > 0;
     const refusal = buysNumbers
       ? allowances.refusalForNumber(desk)

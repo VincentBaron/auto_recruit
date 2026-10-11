@@ -1,4 +1,5 @@
-import { existsSync, readFileSync, renameSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
+import { writeJsonAtomic } from "./json-file.ts";
 
 export interface Recruiter {
   channel: string;
@@ -48,9 +49,7 @@ export function loadRegistry(file: string): Registry {
     all: () => [...entries],
     add(recruiter) {
       entries.push(recruiter);
-      const tmp = `${file}.tmp`;
-      writeFileSync(tmp, JSON.stringify(entries, null, 2));
-      renameSync(tmp, file);
+      writeJsonAtomic(file, entries);
     },
   };
 }
