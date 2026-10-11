@@ -1,6 +1,6 @@
 # Auto Recruit bot
 
-A Telegram chat on top of the `auto-recruit` plugin (ADRs 0026 to 0028). One message is one agent turn, run on the Claude Agent SDK (Opus 5.5) inside the sender's Desk folder.
+A Telegram chat on top of the `auto-recruit` plugin (ADRs 0026 to 0028). One message is usually one agent turn (a Recap is two: the Recap, then the next Call Sheet), run on the Claude Agent SDK (Opus 5.5) inside the sender's Desk folder.
 
 - `src/engine.ts`: the conversation engine, with no Telegram types. One turn at a time per Desk, resumed session per Recruiter, a git commit after each turn.
   It also runs the calling session: the menu, the buttons of a Call Sheet card (a reply starting with 📞), Undo of a Recap (one `git reset` of the Desk's last commit, offered only while that commit is the last one), the next card after each Recap, "aide" and "stop".

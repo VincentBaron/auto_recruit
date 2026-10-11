@@ -50,5 +50,6 @@ export const deskVersions: DeskVersions = {
 
 /** Pushes the Desk to its backup repo (`origin`); throws when there is none or the push fails. */
 export async function pushDesk(desk: string): Promise<void> {
-  await git(desk, "push", "origin", "HEAD");
+  // An Undo rewinds the Desk's last commit, which may already be on the backup: the lease lets the push replace it.
+  await git(desk, "push", "--force-with-lease", "origin", "HEAD");
 }

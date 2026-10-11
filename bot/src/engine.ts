@@ -89,7 +89,7 @@ const HELP = [
 
 const HELP_REQUEST = /^(aide|\?|help)$/i;
 const STOP_REQUEST = /^(stop|arrête|arrete|assez)$/i;
-const PHONE_NUMBER = /\+\d{8,15}/;
+const PHONE_NUMBER = /^\+\d{8,15}$/m; // the number sits alone on its line on a card
 const CARD_MARK = "📞";
 
 /**
