@@ -3,6 +3,7 @@
 A Telegram chat on top of the `auto-recruit` plugin (ADRs 0026 to 0028). One message is one agent turn, run on the Claude Agent SDK (Opus 5.5) inside the sender's Desk folder.
 
 - `src/engine.ts`: the conversation engine, with no Telegram types. One turn at a time per Desk, resumed session per Recruiter, a git commit after each turn.
+  It also runs the calling session: the menu, the buttons of a Call Sheet card (a reply starting with 📞), Undo of a Recap (one `git reset` of the Desk's last commit, offered only while that commit is the last one), the next card after each Recap, "aide" and "stop".
 - `src/desk-guard.ts`: what a turn may do: files of its own Desk only, `date` as the only shell, the Skill tool and Exa.
 - `src/telegram.ts`: the Telegram adapter (long polling, typing, messages split under 4096 characters). WhatsApp will be a second adapter.
 - `src/registry.ts`: `recruiters.json` in the data folder, a list of `{ "channel": "telegram", "userId": "123", "desk": "/srv/auto-recruit/desks/1" }`. Unknown users are ignored.

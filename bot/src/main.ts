@@ -1,6 +1,6 @@
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { commitTurn } from "./desk-git.ts";
+import { commitTurn, deskVersions } from "./desk-git.ts";
 import { Engine } from "./engine.ts";
 import { loadRegistry } from "./registry.ts";
 import { SdkRunner } from "./sdk-runner.ts";
@@ -23,10 +23,11 @@ const engine = new Engine({
   }),
   sessionsFile: join(dataDir, "sessions.json"),
   commit: commitTurn,
+  versions: deskVersions,
 });
 
-const adapter = new TelegramAdapter(botApi(required("TELEGRAM_BOT_TOKEN")), (userId, text, typing) =>
-  engine.handle("telegram", userId, text, { onTurnStart: typing.start, onTurnEnd: typing.stop }),
+const adapter = new TelegramAdapter(botApi(required("TELEGRAM_BOT_TOKEN")), (userId, input, typing, send) =>
+  engine.handle("telegram", userId, input, send, { onTurnStart: typing.start, onTurnEnd: typing.stop }),
 );
 
 const stop = new AbortController();
