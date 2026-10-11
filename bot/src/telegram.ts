@@ -1,3 +1,4 @@
+import type { Screen } from "./review.ts";
 import { splitMessage } from "./split.ts";
 
 const TELEGRAM_LIMIT = 4096;
@@ -7,7 +8,18 @@ const ERROR_REPLY = "Désolé, une erreur est survenue de mon côté. Réessayez
 export interface TelegramUpdate {
   update_id: number;
   message?: { chat: { id: number }; from?: { id: number }; text?: string };
+  callback_query?: { id: string; from: { id: number }; data?: string; message?: { message_id: number; chat: { id: number } } };
 }
+
+/** What the adapter asks the review of a Batch; null when the user has no Desk or nothing is awaited. */
+export interface ReviewPort {
+  press(userId: string, data: string): Screen | null;
+  reason(userId: string, text: string): Screen | null;
+}
+
+const keyboard = (screen: Screen) => ({
+  inline_keyboard: screen.buttons.map((row) => row.map((b) => ({ text: b.label, callback_data: b.data }))),
+});
 
 export interface TelegramApi {
   call(method: string, params?: Record<string, unknown>): Promise<unknown>;
@@ -35,18 +47,34 @@ export function botApi(token: string): TelegramApi {
 /** The Telegram channel adapter: turns updates into messages for the engine and answers back. */
 export class TelegramAdapter {
   private offset = 0;
+  /** The card each user is looking at, so a reason typed later edits it in place. */
+  private readonly cards = new Map<string, { chatId: number; messageId: number }>();
 
   constructor(
     private readonly api: TelegramApi,
     private readonly onMessage: OnMessage,
+    private readonly review?: ReviewPort,
   ) {}
+
+  /** Speaks first to a user (in a private chat the chat id is the user id). */
+  async push(userId: string, screen: Screen): Promise<void> {
+    const parts = splitMessage(screen.text, TELEGRAM_LIMIT);
+    for (const [i, text] of parts.entries()) {
+      const last = i === parts.length - 1 && screen.buttons.length > 0;
+      await this.api.call("sendMessage", {
+        chat_id: Number(userId),
+        text,
+        ...(last ? { reply_markup: keyboard(screen) } : {}),
+      });
+    }
+  }
 
   /** One long-polling round: fetches updates and handles them. Turns of different Desks run in parallel. */
   async poll(timeoutSeconds = 0): Promise<void> {
     const updates = (await this.api.call("getUpdates", {
       offset: this.offset,
       timeout: timeoutSeconds,
-      allowed_updates: ["message"],
+      allowed_updates: ["message", "callback_query"],
     })) as TelegramUpdate[];
     for (const update of updates) this.offset = Math.max(this.offset, update.update_id + 1);
     await Promise.all(updates.map((update) => this.handle(update)));
@@ -64,10 +92,43 @@ export class TelegramAdapter {
     }
   }
 
+  private async handleTap(query: NonNullable<TelegramUpdate["callback_query"]>): Promise<void> {
+    await this.api.call("answerCallbackQuery", { callback_query_id: query.id }).catch(() => {});
+    const where = query.message;
+    if (this.review === undefined || query.data === undefined || where === undefined) return;
+    const userId = String(query.from.id);
+    const screen = this.review.press(userId, query.data);
+    if (screen === null) return;
+    const card = { chatId: where.chat.id, messageId: where.message_id };
+    this.cards.set(userId, card);
+    await this.edit(card, screen);
+  }
+
+  private async edit(card: { chatId: number; messageId: number }, screen: Screen): Promise<void> {
+    await this.api.call("editMessageText", {
+      chat_id: card.chatId,
+      message_id: card.messageId,
+      text: screen.text,
+      reply_markup: keyboard(screen),
+    });
+  }
+
   private async handle(update: TelegramUpdate): Promise<void> {
+    if (update.callback_query !== undefined) {
+      await this.handleTap(update.callback_query).catch((error) => console.error("tap failed", error));
+      return;
+    }
     const message = update.message;
     if (message?.text === undefined || message.from === undefined) return;
     const chatId = message.chat.id;
+    const reasonScreen = this.review?.reason(String(message.from.id), message.text) ?? null;
+    if (reasonScreen !== null) {
+      const card = this.cards.get(String(message.from.id));
+      await (card === undefined ? this.push(String(chatId), reasonScreen) : this.edit(card, reasonScreen)).catch((error) =>
+        console.error("reason failed", error),
+      );
+      return;
+    }
     let timer: NodeJS.Timeout | undefined;
     const typing = {
       start: () => {

@@ -6,6 +6,8 @@ A Telegram chat on top of the `auto-recruit` plugin (ADRs 0026 to 0028). One mes
 - `src/desk-guard.ts`: what a turn may do: files of its own Desk only, `date` as the only shell, the Skill tool and Exa.
 - `src/telegram.ts`: the Telegram adapter (long polling, typing, messages split under 4096 characters). WhatsApp will be a second adapter.
 - `src/registry.ts`: `recruiters.json` in the data folder, a list of `{ "channel": "telegram", "userId": "123", "desk": "/srv/auto-recruit/desks/1" }`. Unknown users are ignored.
+- `src/review.ts`: the Batch review, one card at a time with Keep, Skip and Keep the rest; every decision is written to the Batch file (`src/batch-file.ts`) as it happens, so a review resumes at the next undecided card.
+- `src/scheduler.ts`: every minute, checks the Search run saved in each `Searching` Batch, has the agent rank the people when it ends, and says "Your Batch is ready to review" unless it is between 20:00 and 08:00 in the Recruiter's `timezone` (default `Europe/Paris`, set in `recruiters.json`).
 - `src/backup.ts`: pushes each Desk to its `origin`, a private GitHub repo.
 
 ## Run
