@@ -94,6 +94,26 @@ describe("Scheduler", () => {
     expect(sent).toEqual([]);
   });
 
+  it("reports a failing ranking turn once instead of retrying it every minute", async () => {
+    status = "finished";
+    const s = new Scheduler({
+      recruiters: () => [{ channel: "telegram", userId: "42", desk, timezone: "Europe/Paris" }],
+      searchStatus: async () => status,
+      finishSearch: async () => {
+        finished.push("fde");
+        throw new Error("agent down");
+      },
+      notify: async () => {},
+      onFailure: (_d, slug) => void failures.push(slug),
+      notified: { has: () => false, add: () => {} },
+      now: () => now,
+    });
+    await s.tick();
+    await s.tick();
+    expect(finished).toEqual(["fde"]);
+    expect(failures).toEqual(["fde"]);
+  });
+
   it("does not poll the same search twice at once", async () => {
     status = "finished";
     const s = scheduler();

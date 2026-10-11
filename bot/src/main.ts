@@ -1,6 +1,7 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { openBatches, readBatch } from "./batch-file.ts";
 import { commitTurn } from "./desk-git.ts";
 import { Engine } from "./engine.ts";
 import { loadRegistry } from "./registry.ts";
@@ -35,7 +36,7 @@ const userOfDesk = (desk: string) => registry.recruiters(CHANNEL).find((r) => r.
 
 let adapter: TelegramAdapter;
 
-const review = new BatchReview((desk, slug) => {
+const applyBatch = (desk: string, slug: string) => {
   const userId = userOfDesk(desk);
   if (userId === undefined) return;
   // Applying is an agent turn, so it waits its turn in the Desk's queue like any other.
@@ -44,7 +45,8 @@ const review = new BatchReview((desk, slug) => {
     .handle(CHANNEL, userId, prompt)
     .then((text) => adapter.push(userId, { text: text ?? "", buttons: [] }))
     .catch((error) => console.error(`applying ${slug} failed`, error));
-});
+};
+const review = new BatchReview(applyBatch);
 
 adapter = new TelegramAdapter(
   botApi(required("TELEGRAM_BOT_TOKEN")),
@@ -67,7 +69,13 @@ const scratch = join(dataDir, "scratch");
 mkdirSync(scratch, { recursive: true });
 const checker = new SdkRunner({ pluginPath, exaApiKey, model: "claude-haiku-4-5-20251001" });
 const notifiedFile = join(dataDir, "notified.json");
-const readNotified = (): string[] => (existsSync(notifiedFile) ? JSON.parse(readFileSync(notifiedFile, "utf8")) : []);
+const readNotified = (): string[] => {
+  try {
+    return existsSync(notifiedFile) ? JSON.parse(readFileSync(notifiedFile, "utf8")) : [];
+  } catch {
+    return [];
+  }
+};
 
 const scheduler = new Scheduler({
   recruiters: () => registry.recruiters(CHANNEL),
@@ -92,6 +100,11 @@ const scheduler = new Scheduler({
   },
   now: () => new Date(),
 });
+
+// A Batch left `Approved` by a restart is applied again; the skill skips people already `Applied`.
+for (const { desk } of registry.recruiters(CHANNEL)) {
+  for (const slug of openBatches(desk)) if (readBatch(desk, slug).status === "Approved") applyBatch(desk, slug);
+}
 
 const stop = new AbortController();
 for (const signal of ["SIGINT", "SIGTERM"] as const) process.on(signal, () => stop.abort());

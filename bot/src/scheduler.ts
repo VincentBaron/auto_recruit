@@ -66,8 +66,16 @@ export class Scheduler {
         this.options.onFailure(recruiter.desk, slug, new Error(`Search run ${batch.searchRun} failed`));
         return;
       }
-      await this.options.finishSearch(recruiter.desk, slug);
-      batch = readBatch(recruiter.desk, slug);
+      // One try only: a turn that fails or leaves the Batch unranked is reported, never repeated every minute.
+      try {
+        await this.options.finishSearch(recruiter.desk, slug);
+        batch = readBatch(recruiter.desk, slug);
+        if (batch.status === "Searching") throw new Error(`Batch ${slug} is still Searching after its search ended`);
+      } catch (error) {
+        this.failed.add(`${key}|${batch.searchRun}`);
+        this.options.onFailure(recruiter.desk, slug, error);
+        return;
+      }
     }
     if (batch.status !== "Proposed") return;
     const announced = `${key}|${batch.searchRun ?? ""}`;
