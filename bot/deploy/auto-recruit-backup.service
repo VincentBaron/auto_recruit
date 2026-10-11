@@ -1,0 +1,9 @@
+[Unit]
+Description=Push every Auto Recruit Desk to its backup repo
+
+[Service]
+Type=oneshot
+User=autorecruit
+WorkingDirectory=/opt/auto_recruit/bot
+Environment=AUTO_RECRUIT_DATA=/srv/auto-recruit
+ExecStart=/usr/bin/npm run backup
