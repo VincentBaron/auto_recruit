@@ -77,12 +77,17 @@ export class Allowances {
       : null;
   }
 
+  /** How much of the month's Allowance is used, 0 to 1 and beyond: the Batches or the money, whichever is higher. */
+  fractionUsed(desk: string): number {
+    const { batches, euros } = this.limits(desk);
+    const usage = this.usage(desk);
+    return Math.max(batches > 0 ? usage.batches / batches : 1, euros > 0 ? usage.euros / euros : 1);
+  }
+
   /** The 75% and 100% thresholds crossed since the last call, once each per month. */
   newlyCrossed(desk: string): number[] {
     const month = this.month(desk);
-    const { batches, euros } = this.limits(desk);
-    const usage = this.usage(desk);
-    const used = Math.max(batches > 0 ? usage.batches / batches : 1, euros > 0 ? usage.euros / euros : 1);
+    const used = this.fractionUsed(desk);
     const already = this.read(desk).pinged[month] ?? [];
     const crossed = [75, 100].filter((t) => used * 100 >= t && !already.includes(t));
     if (crossed.length > 0) this.update(desk, (a) => void (a.pinged[month] = [...already, ...crossed]));

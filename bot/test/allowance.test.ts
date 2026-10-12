@@ -50,6 +50,16 @@ describe("Allowance", () => {
     expect(allowances.usage(desk).batches).toBe(0);
   });
 
+  it("tells how much of the Allowance is used, the Batches or the money, whichever is higher", () => {
+    expect(allowances.fractionUsed(desk)).toBe(0);
+    allowances.recordBatchStart(desk);
+    allowances.recordBatchStart(desk);
+    allowances.recordBatchStart(desk);
+    expect(allowances.fractionUsed(desk)).toBe(0.75);
+    for (let i = 0; i < 9; i++) person(`${i}.md`, "+33612345678 (Exa, 2026-10-12)"); // 9 x €5 of €50
+    expect(allowances.fractionUsed(desk)).toBe(0.9);
+  });
+
   it("lets Vincent raise it", () => {
     for (let i = 0; i < 4; i++) allowances.recordBatchStart(desk);
     allowances.setBatches(desk, 6);

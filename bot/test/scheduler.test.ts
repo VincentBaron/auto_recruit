@@ -28,6 +28,8 @@ const scheduler = () =>
     notify: async (userId, screen) => void sent.push([userId, screen]),
     onFailure: (_d, slug) => void failures.push(slug),
     notified: { has: (k) => notified.has(k), add: (k) => void notified.add(k) },
+    sendCallSheet: async () => {},
+    allowanceUsed: () => 0,
     now: () => now,
   });
 
@@ -106,6 +108,8 @@ describe("Scheduler", () => {
       notify: async () => {},
       onFailure: (_d, slug) => void failures.push(slug),
       notified: { has: () => false, add: () => {} },
+      sendCallSheet: async () => {},
+      allowanceUsed: () => 0,
       now: () => now,
     });
     await s.tick();
