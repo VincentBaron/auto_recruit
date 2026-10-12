@@ -11,14 +11,17 @@ A Telegram chat on top of the `auto-recruit` plugin (ADRs 0026 to 0028). One mes
 - `src/registry.ts`: `recruiters.json` in the data folder, a list of `{ "channel": "telegram", "userId": "123", "desk": "/srv/auto-recruit/desks/1", "name": "Camille Dupont", "timezone": "Europe/Paris", "language": "fr" }`. Invites append to it.
 - `src/concierge.ts`: the front door. Vincent's admin lines (`invite Camille Dupont`, `raise Camille to 6 Batches`, `give Camille €30 more for numbers`) work only from `ADMIN_TELEGRAM_ID`; `/start <code>` creates a Desk once; strangers get "On vous recontacte" and Vincent a ping; Allowance and failure pings go to Vincent.
 - `src/allowance.ts`: monthly Allowance per Desk (default 4 Batches, €50). A Batch starts when its `batches/*.md` file is created; spend is the `Phone: ... (Exa, date)` lines of the month times `PHONE_PRICE_EUR` (default 0.5). The tool gate refuses past it. Files `invites.json`, `allowances.json`, `enrichment-failures.json` live in the data folder.
+- `src/transcribe.ts`, `src/voice.ts`: voice notes. The `Transcriber` interface has Mistral Voxtral Mini Transcribe 2 behind it (`docs/research/speech-to-text.md`). The adapter hands the engine a lazy download; once the sender is known to have a Desk, the engine downloads the note, converts it (OGG/Opus to MP3 with `ffmpeg`), transcribes it and runs the text as the Recruiter's message. When the note follows a Call Sheet, the person's name, title and company from the card and the job titles of the Desk's Niches go as `context_bias`. The audio is in memory, and on disk only inside the converter's folder in `$AUTO_RECRUIT_DATA/audio`, removed before it returns; a crash's leftovers are swept at start (ADR 0029). If the transcription fails or is empty, the Recruiter is asked to send it again and no turn runs.
 - `src/backup.ts`: pushes each Desk to its `origin`, a private GitHub repo.
 
 ## Run
 
 ```
 npm install
-EXA_API_KEY=... TELEGRAM_BOT_TOKEN=... ADMIN_TELEGRAM_ID=... [PHONE_PRICE_EUR=0.5] AUTO_RECRUIT_DATA=/srv/auto-recruit npm start
+EXA_API_KEY=... TELEGRAM_BOT_TOKEN=... ADMIN_TELEGRAM_ID=... [MISTRAL_API_KEY=...] [PHONE_PRICE_EUR=0.5] AUTO_RECRUIT_DATA=/srv/auto-recruit npm start
 ```
+
+`MISTRAL_API_KEY` turns voice notes on (without it they are refused); `ffmpeg` must be installed unless `VOICE_CONVERT=none` (use it once the Voxtral API is confirmed to take OGG/Opus); `VOXTRAL_MODEL` overrides `voxtral-mini-latest`.
 
 The Agent SDK needs Anthropic credentials for the service user (`ANTHROPIC_API_KEY`).
 

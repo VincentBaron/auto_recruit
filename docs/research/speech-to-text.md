@@ -31,9 +31,21 @@ Plan an ffmpeg step from OGG to MP3 or WAV until OGG support in the API is confi
 Runner-up is AssemblyAI on its EU endpoint; ElevenLabs Scribe v2 is the most accurate if EU residency is negotiated.
 Before partners arrive, compare Voxtral with the runner-up on 20 real Recaps with a context list such as "Léa Morel, Acme, Forward Deployed Engineer", since vendor WER does not predict how names come out.
 
+## Comparison on real Recaps
+
+Not done yet: it needs 20 of Vincent's real Recaps, which no agent may read.
+Protocol, to run before partners arrive:
+
+1. Pick 20 Recaps of Vincent's own, in casual French with English job titles and a person's name, 10 to 60 seconds each; write each one's true transcript by hand.
+2. For each, transcribe with Voxtral (`voxtral-mini-latest`, the bot's `VoxtralTranscriber`) and with AssemblyAI on its EU endpoint, giving both the same context list, such as "Léa Morel, Acme, Forward Deployed Engineer".
+3. Count, per provider, the wrong words, and separately the names, companies and job titles written wrong.
+4. Record the table and the choice here. Keep Voxtral unless AssemblyAI gets clearly fewer names and titles wrong; the `Transcriber` interface makes the swap one class.
+
+Result: pending.
+
 ## Not verified
 
-- Mistral: OGG/Opus on the API, retention period and zero-retention terms.
+- Mistral: OGG/Opus on the API (the bot converts to MP3 with ffmpeg until confirmed; `VOICE_CONVERT=none` skips it), how `context_bias` is sent in a multipart request (the bot repeats the field once per term), retention period and zero-retention terms.
 - AssemblyAI, Speechmatics, Google: OGG support.
 - Deepgram: keyterms for French.
 

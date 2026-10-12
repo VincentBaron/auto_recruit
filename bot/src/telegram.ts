@@ -61,6 +61,13 @@ export type OnInput = (
 /** The Bot API over HTTPS: long polling needs no webhook and no domain (ADR 0028). */
 export function botApi(token: string): TelegramApi {
   return {
+    async download(fileId) {
+      const file = (await this.call("getFile", { file_id: fileId })) as { file_path?: string };
+      if (file.file_path === undefined) throw new Error("Telegram getFile returned no path");
+      const response = await fetch(`https://api.telegram.org/file/bot${token}/${file.file_path}`);
+      if (!response.ok) throw new Error(`Telegram file download failed with status ${response.status}`);
+      return Buffer.from(await response.arrayBuffer());
+    },
     async call(method, params = {}) {
       const response = await fetch(`https://api.telegram.org/bot${token}/${method}`, {
         method: "POST",
@@ -160,6 +167,18 @@ export class TelegramAdapter {
       void this.api
         .call("editMessageReplyMarkup", { chat_id: chatId, message_id: tap.message.message_id, reply_markup: { inline_keyboard: [] } })
         .catch(() => {});
+    } else if (message?.voice !== undefined && message.from !== undefined) {
+      chatId = message.chat.id;
+      from = message.from;
+      const fileId = message.voice.file_id;
+      const download = this.api.download?.bind(this.api);
+      input = {
+        kind: "voice",
+        audio: async () => {
+          if (download === undefined) throw new Error("this Telegram API cannot download files");
+          return download(fileId);
+        },
+      };
     } else if (message?.text !== undefined && message.from !== undefined) {
       chatId = message.chat.id;
       from = message.from;
