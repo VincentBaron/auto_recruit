@@ -193,6 +193,11 @@ export class TelegramAdapter {
     }
   }
 
+  /** Speaks first with a card, copy-number button included. */
+  async pushReply(userId: string, reply: Reply): Promise<void> {
+    await this.send(Number(userId), reply);
+  }
+
   private async send(chatId: number, reply: Reply): Promise<void> {
     const parts = splitMessage(reply.text, TELEGRAM_LIMIT);
     for (const [i, part] of parts.entries()) {

@@ -129,6 +129,13 @@ const scheduler = new Scheduler({
     if (userId === undefined) return;
     await engine.handle(CHANNEL, userId, { kind: "text", text: `/auto-recruit:batch --resume ${slug}` }, async () => {});
   },
+  sendCallSheet: async (recruiter, entry) => {
+    // The Call Sheet card comes from the call skill, in the Desk's queue like any other turn.
+    await engine.handle(CHANNEL, recruiter.userId, { kind: "text", text: `call ${entry.number}` }, (reply) =>
+      adapter.pushReply(recruiter.userId, reply),
+    );
+  },
+  allowanceUsed: (desk) => allowances.fractionUsed(desk),
   notify: (userId, screen) => adapter.push(userId, screen),
   onFailure: (desk, slug, error) => console.error(`search failed for ${slug} in ${desk}`, error),
   notified: {

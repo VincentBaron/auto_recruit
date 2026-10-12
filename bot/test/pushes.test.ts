@@ -102,6 +102,7 @@ describe("the Morning Rundown", () => {
   it("is sent for a Batch waiting for review alone, with a button to review it", async () => {
     writeFileSync(join(desk, "batches", "fde.md"), "# Batch - fde\n\nStatus: Proposed\nSearch run: run_1\n");
     writeFileSync(join(desk, "batches", "ops.md"), "# Batch - ops\n\nStatus: Searching\nSearch run: run_2\n");
+    notified.add(`${desk}|fde|run_1`); // "ready to review" already said at 08:00
     await scheduler().tick();
     expect(sent).toHaveLength(1);
     expect(sent[0]![1].text).toContain("1 Batch waiting for review");
