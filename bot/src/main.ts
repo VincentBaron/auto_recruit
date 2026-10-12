@@ -6,6 +6,8 @@ import { openBatches, readBatch } from "./batch-file.ts";
 import { Concierge } from "./concierge.ts";
 import { commitTurn, deskVersions } from "./desk-git.ts";
 import { Engine } from "./engine.ts";
+import { VoxtralTranscriber } from "./transcribe.ts";
+import { ffmpegToMp3, sweepAudio, VoiceNotes } from "./voice.ts";
 import { loadInvites } from "./invites.ts";
 import { DEFAULT_TIMEZONE, loadRegistry } from "./registry.ts";
 import { BatchReview } from "./review.ts";
@@ -44,7 +46,21 @@ const allowances = new Allowances({
 let concierge: Concierge | undefined;
 const notifyAdmin = async (text: string) => void (await api.call("sendMessage", { chat_id: adminId, text }));
 
+// Voice notes: Voxtral behind the Transcriber interface; ffmpeg turns OGG/Opus into MP3 unless VOICE_CONVERT=none.
+// The audio of a crashed run is swept at start, and a note is never kept after it is transcribed (ADR 0029).
+const audioDir = join(dataDir, "audio");
+sweepAudio(audioDir);
+const mistralKey = process.env.MISTRAL_API_KEY;
+const voice = mistralKey
+  ? new VoiceNotes({
+      transcriber: new VoxtralTranscriber({ apiKey: mistralKey, model: process.env.VOXTRAL_MODEL }),
+      convert: process.env.VOICE_CONVERT === "none" ? undefined : ffmpegToMp3(audioDir),
+    })
+  : undefined;
+if (voice === undefined) console.warn("MISTRAL_API_KEY is not set: voice notes are refused");
+
 const engine = new Engine({
+  voice,
   registry,
   runner: new SdkRunner({
     pluginPath,

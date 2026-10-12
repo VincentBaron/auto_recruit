@@ -1,5 +1,6 @@
 import { existsSync, readdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { contextTerms } from "./transcribe.ts";
 import { checkNiche } from "./niche-file.ts";
 import type { Registry } from "./registry.ts";
 
@@ -34,7 +35,11 @@ export interface Reply {
 }
 
 /** What a Recruiter did: typed (or said) something, or tapped a button of an earlier reply. */
-export type Input = { kind: "text"; text: string } | { kind: "tap"; data: string };
+export type Input =
+  | { kind: "text"; text: string }
+  | { kind: "tap"; data: string }
+  /** A voice note, downloaded only once the sender is known to have a Desk. */
+  | { kind: "voice"; audio: () => Promise<Buffer> };
 
 /** The Desk's git history, as far as the engine needs it to offer Undo. */
 export interface DeskVersions {
@@ -54,6 +59,8 @@ export interface EngineOptions {
   /** Commits what a turn changed in a Desk. */
   commit: (desk: string, message: string) => Promise<boolean>;
   versions: DeskVersions;
+  /** Turns a voice note into text; without it voice notes are refused. */
+  voice?: { transcribe(download: () => Promise<Buffer>, contextBias: string[]): Promise<string> };
 }
 
 /** The fixed menu under the keyboard. */
@@ -89,6 +96,8 @@ const HELP = [
   "Tout le reste, écrivez-le simplement: une nouvelle niche, qui est Léa, etc.",
 ].join("\n");
 
+const VOICE_FAILED = "Je n'ai pas pu comprendre ce vocal. Renvoyez-le, ou écrivez-le en quelques mots.";
+
 const APPROVE_COPY: Record<string, { button: string; started: string }> = {
   fr: { button: "✅ Valider cette niche", started: "C'est validé. Je lance votre première sélection et je vous écris dès qu'elle est prête." },
   en: { button: "✅ Approve this Niche", started: "Approved. I am starting your first Batch and I will write to you as soon as it is ready." },
@@ -112,6 +121,8 @@ export class Engine {
   private readonly stopped = new Set<string>();
   /** What the agent must be told before its next turn, such as an Undo it did not see. */
   private readonly notices = new Map<string, string>();
+  /** The last Call Sheet card shown in each Desk: a voice note that follows is most likely about that person. */
+  private readonly cards = new Map<string, string>();
 
   constructor(private readonly options: EngineOptions) {}
 
@@ -145,6 +156,10 @@ export class Engine {
   }
 
   private async dispatch(desk: string, input: Input, send: (reply: Reply) => Promise<void>, hooks: TurnHooks): Promise<void> {
+    if (input.kind === "voice") {
+      const text = await this.transcribe(desk, input.audio, hooks);
+      return text === null ? send({ text: VOICE_FAILED }) : this.dispatch(desk, { kind: "text", text }, send, hooks);
+    }
     if (input.kind === "tap" && input.data.startsWith("undo:")) return this.undo(desk, input.data.slice(5), send, hooks);
 
     if (input.kind === "tap" && input.data.startsWith("niche:")) return this.approveNiche(desk, input.data, send, hooks);
@@ -172,7 +187,9 @@ export class Engine {
       (input.kind === "tap" || (await this.options.versions.addsAttempt(desk)));
 
     if (!isRecap) {
-      return niches === undefined ? send(toReply(answer.text, isMore)) : this.afterNicheTurn(desk, niches, answer.text, send, hooks);
+      return niches === undefined
+        ? send(this.remember(desk, toReply(answer.text, isMore)))
+        : this.afterNicheTurn(desk, niches, answer.text, send, hooks);
     }
     await send({ text: answer.text, buttons: [[{ label: "Undo", data: `undo:${answer.sha}` }]] });
     if (!this.stopped.has(desk) && (this.waiting.get(desk) ?? 0) === 0) await this.sendNextCard(desk, send, hooks);
@@ -228,7 +245,37 @@ export class Engine {
 
   private async sendNextCard(desk: string, send: (reply: Reply) => Promise<void>, hooks: TurnHooks): Promise<void> {
     const answer = await this.turn(desk, NEXT_CALL_PROMPT, "next call", hooks);
-    await send(toReply(answer.text, false));
+    await send(this.remember(desk, toReply(answer.text, false)));
+  }
+
+  private remember(desk: string, reply: Reply): Reply {
+    if (reply.text.startsWith(CARD_MARK)) this.cards.set(desk, reply.text);
+    return reply;
+  }
+
+  /** The words of a voice note, or null when there is no transcriber, it failed or heard nothing. */
+  private async transcribe(desk: string, audio: () => Promise<Buffer>, hooks: TurnHooks): Promise<string | null> {
+    const voice = this.options.voice;
+    if (voice === undefined) return null;
+    hooks.onTurnStart?.();
+    try {
+      const text = await voice.transcribe(audio, contextTerms(this.cards.get(desk), this.nicheTexts(desk)));
+      return text.trim() === "" ? null : text.trim();
+    } catch (error) {
+      console.error(`transcription failed for ${desk}`, error instanceof Error ? error.message : error);
+      return null;
+    } finally {
+      hooks.onTurnEnd?.();
+    }
+  }
+
+  private nicheTexts(desk: string): string[] {
+    const dir = join(desk, "niches");
+    if (!existsSync(dir)) return [];
+    return readdirSync(dir)
+      .filter((name) => name.endsWith(".md"))
+      .sort()
+      .map((name) => readFileSync(join(dir, name), "utf8"));
   }
 
   /** Runs one agent turn and commits it; `sha` is the commit it made, or null when it changed nothing. */

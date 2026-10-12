@@ -199,4 +199,39 @@ describe("TelegramAdapter", () => {
     await new TelegramAdapter(api, async (_u, _i, sender) => ((seen = sender), null)).poll();
     expect(seen).toEqual({ name: "Jean Martin", username: "jmartin", language: "en" });
   });
+
+  it("hands a voice note to the engine as a lazy download of its file", async () => {
+    const downloads: string[] = [];
+    const { api: base, calls } = fakeApi([
+      [{ update_id: 1, message: { chat: { id: 42 }, from: { id: 42 }, voice: { file_id: "AwAC", duration: 12 } } }],
+    ]);
+    const api: TelegramApi = {
+      ...base,
+      download: async (fileId) => (downloads.push(fileId), Buffer.from("ogg")),
+    };
+    const inputs: Input[] = [];
+    const adapter = new TelegramAdapter(api, async (_u, input, _s, _t, send) => {
+      inputs.push(input);
+      expect(downloads).toEqual([]);
+      if (input.kind === "voice") await send({ text: `got ${(await input.audio()).toString()}` });
+    });
+    await adapter.poll();
+    expect(inputs).toHaveLength(1);
+    expect(inputs[0].kind).toBe("voice");
+    expect(downloads).toEqual(["AwAC"]);
+    expect(sent(calls)).toMatchObject([{ chat_id: 42, text: "got ogg" }]);
+  });
+
+  it("does not take a voice note as the reason of a Skip, and answers an error when the download fails", async () => {
+    const { api: base, calls } = fakeApi([
+      [{ update_id: 1, message: { chat: { id: 42 }, from: { id: 42 }, voice: { file_id: "AwAC" } } }],
+    ]);
+    const api: TelegramApi = { ...base, download: async () => Promise.reject(new Error("file too big")) };
+    const adapter = new TelegramAdapter(api, async (_u, input, _s, _t, send) => {
+      if (input.kind === "voice") await input.audio();
+      await send({ text: "unreachable" });
+    });
+    await adapter.poll();
+    expect(sent(calls).map((c) => c.text)).toEqual(["Désolé, une erreur est survenue de mon côté. Réessayez dans un instant."]);
+  });
 });
