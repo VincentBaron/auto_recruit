@@ -1,9 +1,10 @@
-import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { beforeEach, describe, expect, it } from "vitest";
 import { Engine, MENU, type AgentRunner, type DeskVersions, type Reply, type TurnRequest } from "../src/engine.ts";
 import { loadRegistry } from "../src/registry.ts";
+import { NICHE } from "./fixtures/niche.ts";
 
 let root: string;
 let desk: string;
@@ -316,5 +317,97 @@ describe("loadRegistry", () => {
   it("maps a channel user to a Desk folder", () => {
     expect(loadRegistry(join(dataDir, "recruiters.json")).deskFor("telegram", "42")).toBe(desk);
     expect(readFileSync(join(dataDir, "recruiters.json"), "utf8")).toContain("42");
+  });
+});
+
+describe("Niche discussion", () => {
+  const writeNiche = (d: string, slug = "fde", content = NICHE) => {
+    mkdirSync(join(d, "niches"), { recursive: true });
+    writeFileSync(join(d, "niches", `${slug}.md`), content);
+  };
+  const approve = (replies: Reply[]) => replies.flatMap((r) => r.buttons?.flat() ?? []).find((b) => "data" in b && b.data.startsWith("niche:"));
+
+  it("CH-5.S2 offers to approve a Niche written in the DESK.md format", async () => {
+    const engine = makeEngine({ run: async (r) => (writeNiche(r.desk), ok("Voici votre niche. On la valide?")) });
+    const replies = (await say(engine, "oui, FDE à Paris"))!;
+    expect(replies[0].text).toBe("Voici votre niche. On la valide?");
+    expect(approve(replies)).toMatchObject({ data: "niche:fde" });
+  });
+
+  it("CH-5.S2 sends a Niche that does not match the format back to the agent once, with what is wrong", async () => {
+    const prompts: string[] = [];
+    const engine = makeEngine({
+      run: async (r) => {
+        prompts.push(r.prompt);
+        writeNiche(r.desk, "fde", prompts.length === 1 ? NICHE.replace("Calls in: French\n", "") : NICHE);
+        return ok(prompts.length === 1 ? "premier jet" : "corrigé");
+      },
+    });
+    const replies = (await say(engine, "FDE"))!;
+    expect(prompts).toHaveLength(2);
+    expect(prompts[1]).toContain("Calls in");
+    expect(prompts[1]).toContain("DESK.md");
+    expect(replies.map((r) => r.text)).toEqual(["corrigé"]);
+    expect(approve(replies)).toBeDefined();
+  });
+
+  it("CH-5.S2 never offers approval for a Niche still wrong after the fix, and stops asking", async () => {
+    let turns = 0;
+    const engine = makeEngine({ run: async (r) => (turns++, writeNiche(r.desk, "fde", "# Broken\n"), ok("hmm")) });
+    const replies = (await say(engine, "FDE"))!;
+    expect(turns).toBe(2);
+    expect(approve(replies)).toBeUndefined();
+  });
+
+  it("CH-5.S2 offers nothing while the Niche file did not change in the turn", async () => {
+    writeNiche(desk);
+    const engine = makeEngine({ run: async () => ok("ok, noted") });
+    expect(approve((await say(engine, "merci"))!)).toBeUndefined();
+  });
+
+  it("CH-5.S3 starts the first Batch when the Niche is approved, and says it will write when the Batch is ready", async () => {
+    writeNiche(desk);
+    const seen: string[] = [];
+    const engine = makeEngine({
+      run: async (r) => {
+        seen.push(r.prompt);
+        mkdirSync(join(r.desk, "batches"), { recursive: true });
+        writeFileSync(join(r.desk, "batches", "fde.md"), "# Batch\n\nStatus: Searching\n");
+        return ok("Search run started");
+      },
+    });
+    const replies = await tap(engine, "niche:fde");
+    expect(seen).toHaveLength(1);
+    expect(seen[0]).toContain("batch skill");
+    expect(seen[0]).toContain("fde");
+    expect(replies.map((r) => r.text).join("\n")).toMatch(/je vous écris/i);
+    expect(replies.map((r) => r.text).join("\n")).not.toMatch(/\d+ ?(min|h|heure)|demain|ce soir/i);
+  });
+
+  it("CH-5.S3 tells the Recruiter what the agent said when no Batch could start", async () => {
+    writeNiche(desk);
+    const engine = makeEngine({ run: async () => ok("Allowance used up.") });
+    const replies = await tap(engine, "niche:fde");
+    expect(replies.map((r) => r.text)).toEqual(["Allowance used up."]);
+  });
+
+  it("CH-5.S3 ignores an approval for a Niche that does not exist", async () => {
+    let turns = 0;
+    const engine = makeEngine({ run: async () => (turns++, ok("x")) });
+    expect(await tap(engine, "niche:../../etc")).toEqual([]);
+    expect(await tap(engine, "niche:ghost")).toEqual([]);
+    expect(turns).toBe(0);
+    expect(existsSync(join(desk, "batches"))).toBe(false);
+  });
+
+  it("CH-5.S1 passes a notice from the concierge to the agent before the next turn only", async () => {
+    const seen: string[] = [];
+    const engine = makeEngine({ run: async (r) => (seen.push(r.prompt), ok("x")) });
+    engine.tell(desk, "Welcome sent");
+    await say(engine, "one");
+    await say(engine, "two");
+    expect(seen[0]).toContain("Welcome sent");
+    expect(seen[0]).toContain("one");
+    expect(seen[1]).toBe("two");
   });
 });
