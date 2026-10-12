@@ -1,12 +1,18 @@
 import { query } from "@anthropic-ai/claude-agent-sdk";
 import type { AgentRunner, TurnRequest, TurnResult } from "./engine.ts";
+import { decideAllowance, type Allowances } from "./allowance.ts";
 import { decideTool } from "./desk-guard.ts";
+import { exaErrorsIn } from "./tool-errors.ts";
 
 export interface SdkRunnerOptions {
   /** Absolute path of `plugins/auto-recruit`, loaded as it is. */
   pluginPath: string;
   exaApiKey: string;
   model?: string;
+  /** Stops a turn from starting a Batch or buying a number past the Recruiter's Allowance. */
+  allowances?: Allowances;
+  /** Called for each Exa tool call that errored during a turn. */
+  onExaError?: (desk: string, tool: string, message: string) => void;
 }
 
 const LANGUAGE_RULE =
@@ -32,13 +38,18 @@ export class SdkRunner implements AgentRunner {
         systemPrompt: { type: "preset", preset: "claude_code", append: LANGUAGE_RULE },
         permissionMode: "default",
         canUseTool: async (tool, input) => {
-          const decision = decideTool(desk, tool, input);
+          let decision = decideTool(desk, tool, input);
+          if (decision.behavior === "allow" && this.options.allowances) {
+            decision = decideAllowance(desk, this.options.allowances, tool, input);
+          }
           return decision.behavior === "allow" ? { behavior: "allow", updatedInput: input } : decision;
         },
       },
     });
 
+    const pendingExa = new Map<string, string>();
     for await (const message of turn) {
+      for (const error of exaErrorsIn(message, pendingExa)) this.options.onExaError?.(desk, error.tool, error.message);
       if (message.type !== "result") continue;
       if (message.subtype !== "success") throw new Error(`Agent turn failed: ${message.subtype}`);
       return { text: message.result, sessionId: message.session_id };

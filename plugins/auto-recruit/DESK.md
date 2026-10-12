@@ -203,7 +203,7 @@ Phone run: run_91ab...
 ```
 
 - A Niche has at most one open Batch; the file is deleted once every person in it is `Applied`.
-- Status moves `Searching` (the Search run is still going), `Proposed` (waiting for the Recruiter's go), `Approved` (phone numbers and Call List being written).
+- Status moves `Searching` (the Search run is still going), `Proposed` (being reviewed one person at a time; the Batch becomes `Approved` when the last person is decided), `Approved` (phone numbers and Call List being written).
 - A person's Decision moves from `Surfaced` to `Dropped` (followed by ` - <reason>` when the Recruiter gave one) or `Approved`, then to `Applied` once their outcome is in `SKIPPED.md` or in their own file and the Call List.
 - The numbers are the ones shown to the Recruiter and never change while the Batch is open.
 

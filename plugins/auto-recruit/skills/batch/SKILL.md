@@ -19,8 +19,8 @@ Without `--resume`, when the Niche already has an open Batch, resume it instead 
 
 Pick up at the Batch's Status:
 
-- `Searching`: call `agent_run` again with the saved Search run id until it finishes, then go on to step 1's ranking.
-- `Proposed`: show the Batch again (step 2), with any drops already recorded, and wait for "go".
+- `Searching`: call `agent_run` again with the saved Search run id until it finishes, then go on to step 1's ranking. In the Telegram bot stop once the Batch is `Proposed`: the bot tells the Recruiter it is ready. From Claude Code go on to step 2.
+- `Proposed`: go on with the review (step 2) at the first person still `Surfaced`; the decisions already recorded stay.
 - `Approved`: go to step 3; people already `Applied` are done, and a saved Phone run id is polled, never run again.
 
 ## 1. Search
@@ -36,18 +36,31 @@ Pass every LinkedIn URL already in the desk and the domain of every ruled-out Pr
 Keep the people whose Signals are dated and sourced, rank them by judgement (strongest and freshest Signals first), and write each a Why Now: one plain sentence naming the dated facts.
 Write them all to the Batch file, each `Surfaced`, and set its Status to `Proposed`.
 
-## 2. Propose
+## 2. Review, one person at a time
 
-Show the Batch in the chat, numbered as in the Batch file, Hiring Contacts first, one line each:
+Show one person at a time, in the order of the Batch file, never the whole list: on a phone a long list does not fit one screen.
+Each card is `4/20`, the name, title and company, the Why Now, and the full LinkedIn URL (`https://` included) so the Recruiter can open it straight from the chat:
 
-`3. Léa Morel, CTO at Acme (Paris) - Two FDE postings since the Series B in August - https://www.linkedin.com/in/leamorel`
+```
+4/20
+Léa Morel
+CTO, Acme (Paris)
+Two FDE postings since the Series B in August
+https://www.linkedin.com/in/leamorel
+```
 
-End each line with the full LinkedIn URL, `https://` included, so the Recruiter can click it straight from the chat.
-Then ask which to drop and why, for example "drop 3, 7: too junior", and wait for "go".
-Say that dropping a Hiring Contact skips their Prospect too, so it is never searched again.
-Record each drop in the Batch file the moment the Recruiter gives it.
-On "go", mark everyone still `Surfaced` as `Approved` and set the Status to `Approved`.
-Done when the Recruiter has said go.
+Ask `keep, skip, or keep the rest?` and wait.
+In the Telegram bot the bot itself shows the cards with **Keep**, **Skip** and **Keep the rest** buttons and writes each decision to the Batch file; from Claude Code you show the cards and write them yourself.
+
+- **Keep**: set the person's Decision to `Approved` and show the next card.
+- **Skip**: set it to `Dropped`, then ask `why? (optional)`; the Recruiter answers with a reason or "no reason".
+  Record the reason on the Decision line (`Dropped - too junior`) the moment it is given.
+  Say that skipping a Hiring Contact skips their Prospect too, so it is never searched again.
+- **Keep the rest**: set every person still `Surfaced` to `Approved` and end the review.
+
+Write each decision to the Batch file as it happens: a review that stops resumes at the first person still `Surfaced`, with the position counted over the whole Batch.
+When no one is `Surfaced` any more, set the Status to `Approved`; no extra "go" is needed.
+Done when every person is `Approved` or `Dropped`.
 
 ## 3. Apply the Recruiter's choices
 
