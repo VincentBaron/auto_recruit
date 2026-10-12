@@ -60,9 +60,19 @@ export type OnInput = (
 
 /** The Bot API over HTTPS: long polling needs no webhook and no domain (ADR 0028). */
 export function botApi(token: string): TelegramApi {
+  const url = (method: string) => `https://api.telegram.org/bot${token}/${method}`;
   return {
+    async upload(method, params, file) {
+      const form = new FormData();
+      for (const [key, value] of Object.entries(params)) form.set(key, String(value));
+      form.set(file.field, new Blob([new Uint8Array(file.data)]), file.name);
+      const response = await fetch(url(method), { method: "POST", body: form });
+      const body = (await response.json()) as { ok: boolean; result: unknown; description?: string };
+      if (!body.ok) throw new Error(`Telegram ${method} failed: ${body.description}`);
+      return body.result;
+    },
     async call(method, params = {}) {
-      const response = await fetch(`https://api.telegram.org/bot${token}/${method}`, {
+      const response = await fetch(url(method), {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify(params),
@@ -105,7 +115,10 @@ export class TelegramAdapter {
   }
 
   /** Sends a file to a user, such as their Desk as a zip. */
-  async pushDocument(_userId: string, _name: string, _data: Buffer, _caption: string): Promise<void> {}
+  async pushDocument(userId: string, name: string, data: Buffer, caption: string): Promise<void> {
+    if (this.api.upload === undefined) throw new Error("this Telegram API cannot upload files");
+    await this.api.upload("sendDocument", { chat_id: Number(userId), caption }, { field: "document", name, data });
+  }
 
   /** One long-polling round: fetches updates and handles them. Turns of different Desks run in parallel. */
   async poll(timeoutSeconds = 0): Promise<void> {

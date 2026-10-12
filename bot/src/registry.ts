@@ -64,7 +64,16 @@ export function loadRegistry(file: string): Registry {
       entries.push(recruiter);
       writeJsonAtomic(file, entries);
     },
-    acceptDpa(_channel, _userId, _at) {},
-    remove(_desk) {},
+    acceptDpa(channel, userId, at) {
+      const entry = find(channel, userId);
+      if (entry === undefined || entry.dpaAcceptedAt !== undefined) return;
+      entry.dpaAcceptedAt = at;
+      writeJsonAtomic(file, entries);
+    },
+    remove(desk) {
+      const kept = entries.filter((e) => e.desk !== desk);
+      entries.splice(0, entries.length, ...kept);
+      writeJsonAtomic(file, entries);
+    },
   };
 }

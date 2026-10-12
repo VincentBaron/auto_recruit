@@ -121,12 +121,18 @@ export class Engine {
   }
 
   /** Runs `task` when the Desk is idle, with no agent turn running on it, and holds the Desk's next turn until it ends. */
-  async exclusive<T>(_desk: string, task: () => Promise<T>): Promise<T> {
-    return task();
+  async exclusive<T>(desk: string, task: () => Promise<T>): Promise<T> {
+    const previous = this.queues.get(desk) ?? Promise.resolve();
+    const run = previous.catch(() => {}).then(task);
+    this.queues.set(desk, run);
+    return run;
   }
 
   /** Drops the agent session of a Desk, so the next turn starts a fresh one. */
-  forgetSession(_desk: string): void {}
+  forgetSession(desk: string): void {
+    const { [desk]: _dropped, ...rest } = this.readSessions();
+    this.writeSessions(rest);
+  }
 
   /**
    * Handles one input and sends each reply as soon as it is ready.
