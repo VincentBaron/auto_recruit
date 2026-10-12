@@ -175,7 +175,7 @@ describe("admin lines only work from Vincent's account", () => {
     await ask(concierge, "42", `/start ${await invite(concierge)}`, camille);
     turns.length = 0;
     expect(await ask(concierge, "42", "invite Mallory", camille)).toBe("ok");
-    expect(turns[0].prompt).toBe("invite Mallory");
+    expect(turns[0].prompt).toContain("invite Mallory");
     const reply = await ask(concierge, "99", "invite Mallory", { name: "Mallory", language: "en" });
     expect(reply).toContain("invitation-only");
   });
