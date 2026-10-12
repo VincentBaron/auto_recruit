@@ -110,6 +110,44 @@ describe("invites", () => {
   });
 });
 
+describe("the welcome message", () => {
+  it("CH-5.S1 greets the Recruiter by their Telegram first name and follows the PRD text, ending with the first question", async () => {
+    const { concierge } = build();
+    const reply = await ask(concierge, "42", `/start ${await invite(concierge, "Marie Curie")}`, camille);
+    expect(reply).toMatch(/^Bonjour Camille 👋\nJe suis Auto Recruit\./);
+    expect(reply).toContain("Comment ça marche");
+    expect(reply).toContain("Chaque matin à 8h30");
+    expect(reply!.trimEnd()).toMatch(/Qu'est-ce que vous placez, et où\?.*$/s);
+  });
+
+  it("CH-5.S1 makes no promise about timing", async () => {
+    const { concierge } = build();
+    const reply = await ask(concierge, "42", `/start ${await invite(concierge)}`, camille);
+    expect(reply).not.toMatch(/dans (les )?\d+|d'ici|prêt[es]? (dans|en|d'ici)|sous \d+|rapidement|immédiatement|within|in a few/i);
+  });
+
+  it("CH-5.S1 speaks the Telegram language of the Recruiter and defaults to French", async () => {
+    const { concierge } = build();
+    const en = await ask(concierge, "42", `/start ${await invite(concierge)}`, { name: "Sam Lee", language: "en-GB" });
+    expect(en).toMatch(/^Hello Sam 👋/);
+    expect(en).toContain("What do you place, and where?");
+    const unknown = await ask(concierge, "43", `/start ${await invite(concierge, "Paul Girard")}`, { name: "Paul R", language: "de" });
+    expect(unknown).toMatch(/^Bonjour Paul 👋/);
+    const none = await ask(concierge, "44", `/start ${await invite(concierge, "Lea Morel")}`, { name: "Léa" });
+    expect(none).toMatch(/^Bonjour Léa 👋/);
+  });
+
+  it("CH-5.S1 runs the niche skill as a chat from the Recruiter's first answer", async () => {
+    const { concierge } = build();
+    await ask(concierge, "42", `/start ${await invite(concierge)}`, camille);
+    await ask(concierge, "42", "Des FDE à Paris pour des startups IA", camille);
+    expect(turns).toHaveLength(1);
+    expect(turns[0].prompt).toContain("niche skill");
+    expect(turns[0].prompt).toContain("one question per message");
+    expect(turns[0].prompt).toContain("Des FDE à Paris pour des startups IA");
+  });
+});
+
 describe("strangers", () => {
   it("never get a Desk, get a warm answer in their language, and Vincent hears of them", async () => {
     const { concierge, registry } = build();
@@ -137,7 +175,7 @@ describe("admin lines only work from Vincent's account", () => {
     await ask(concierge, "42", `/start ${await invite(concierge)}`, camille);
     turns.length = 0;
     expect(await ask(concierge, "42", "invite Mallory", camille)).toBe("ok");
-    expect(turns[0].prompt).toBe("invite Mallory");
+    expect(turns[0].prompt).toContain("invite Mallory");
     const reply = await ask(concierge, "99", "invite Mallory", { name: "Mallory", language: "en" });
     expect(reply).toContain("invitation-only");
   });
