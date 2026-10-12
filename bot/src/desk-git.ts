@@ -53,3 +53,20 @@ export async function pushDesk(desk: string): Promise<void> {
   // An Undo rewinds the Desk's last commit, which may already be on the backup: the lease lets the push replace it.
   await git(desk, "push", "--force-with-lease", "origin", "HEAD");
 }
+
+/** Replaces the Desk's whole history with one commit of its present files, so an erased person is in no older commit. */
+export async function squashHistory(desk: string): Promise<void> {
+  if (!existsSync(join(desk, ".git"))) return;
+  const branch = (await git(desk, "rev-parse", "--abbrev-ref", "HEAD")).stdout.trim();
+  await git(desk, "checkout", "--orphan", "squashed");
+  await git(desk, "add", "-A");
+  await git(desk, "commit", "--allow-empty", "-m", "Desk");
+  await git(desk, "branch", "-M", branch);
+  await pruneHistory(desk);
+}
+
+/** Drops from the disk every commit no branch reaches any more. */
+export async function pruneHistory(desk: string): Promise<void> {
+  await git(desk, "reflog", "expire", "--expire=now", "--all");
+  await git(desk, "gc", "--prune=now", "--quiet");
+}

@@ -2,10 +2,14 @@ import { existsSync, mkdirSync, readdirSync, readFileSync } from "node:fs";
 import { join, relative } from "node:path";
 import { parseAdminCommand, type AdminCommand } from "./admin.ts";
 import type { Allowances } from "./allowance.ts";
+import { afterAcceptance, DPA_TAP, dpaAsk, isDpaAcceptance } from "./dpa.ts";
 import type { Engine, Input, Reply, TurnHooks } from "./engine.ts";
+import { eraseFromDesk, parseErasure } from "./erasure.ts";
 import type { Invites } from "./invites.ts";
 import { writeJsonAtomic } from "./json-file.ts";
-import { DEFAULT_TIMEZONE, type Registry } from "./registry.ts";
+import { dateIn, deletionDate, type PartnershipRecord, type Partnerships } from "./partnership.ts";
+import { DEFAULT_TIMEZONE, type Recruiter, type Registry } from "./registry.ts";
+import { zipDesk } from "./zip.ts";
 
 /** Who is writing, as the channel knows them. */
 export interface Sender {
@@ -32,6 +36,14 @@ export interface ConciergeOptions {
   desksDir: string;
   /** Where the failures already counted are kept. */
   failuresFile: string;
+  /** The URL of the data processing agreement; set by configuration, never guessed. */
+  dpaUrl: string;
+  partnerships: Partnerships;
+  /** Sends a file to a Recruiter, such as their Desk as a zip. */
+  sendDocument: (userId: string, name: string, data: Buffer, caption: string) => Promise<void>;
+  /** After an erasure changed a Desk: commit it and drop the older history, locally and on the backup. */
+  afterErase?: (desk: string) => Promise<void>;
+  now?: () => Date;
 }
 
 const START = /^\/start(?:@\w+)?(?: (\S+))?$/;
@@ -44,7 +56,7 @@ const STRANGER_REPLY: Record<string, string> = {
   en: "Hello 👋 Auto Recruit is invitation-only for now. We will get back to you very soon!",
 };
 
-/** The first message of a new Desk: it ends with the first question of the niche discussion, and promises nothing about timing. */
+/** The first message of a new Desk, which promises nothing about timing; the DPA ask follows it, and the first question of the niche discussion follows the acceptance. */
 const WELCOME: Record<string, (name: string) => string> = {
   fr: (name) =>
     [
@@ -57,7 +69,6 @@ const WELCOME: Record<string, (name: string) => string> = {
       "3. Je trouve leurs numéros et je vous envoie chaque fiche d'appel. Vous appelez, vous me racontez en vocal, je note tout et je prépare la suite.",
       "",
       "Chaque matin à 8h30, vos appels du jour arrivent ici.",
-      "On commence? Qu'est-ce que vous placez, et où? (ex: « des Forward Deployed Engineers à Paris, pour des startups IA série A à C »)",
     ].join("\n"),
   en: (name) =>
     [
@@ -70,9 +81,26 @@ const WELCOME: Record<string, (name: string) => string> = {
       "3. I find their numbers and send you each Call Sheet. You call, tell me about it by voice note, I write it all down and prepare what comes next.",
       "",
       "Every morning at 8:30, your calls of the day arrive here.",
-      "Shall we start? What do you place, and where? (e.g. \"Forward Deployed Engineers in Paris, for Series A to C AI startups\")",
     ].join("\n"),
 };
+
+const ENDED_REPLY: Record<string, (date: string) => string> = {
+  fr: (date) => `Votre partenariat avec Auto Recruit est terminé. Votre Desk sera supprimé le ${date}; vous l'avez reçu en zip.`,
+  en: (date) => `Your partnership with Auto Recruit has ended. Your Desk will be deleted on ${date}; you got it as a zip.`,
+};
+const ERASED: Record<string, (name: string) => string> = {
+  fr: (name) => `Effacé: ${name} n'est plus dans votre Desk; seul son nom reste dans la liste Ne pas appeler.`,
+  en: (name) => `Erased ${name} from your Desk; only their name stays, on the Do-Not-Call List.`,
+};
+const NOT_FOUND_REPLY: Record<string, (name: string) => string> = {
+  fr: (name) => `Je ne trouve personne du nom de ${name} sur votre Desk.`,
+  en: (name) => `I cannot find anyone called ${name} on your Desk.`,
+};
+const ZIP_CAPTION: Record<string, (date: string) => string> = {
+  fr: (date) => `Votre Desk en fichiers markdown, comme convenu. Il sera supprimé de notre serveur et de sa sauvegarde le ${date}; je vous écris deux fois d'ici là.`,
+  en: (date) => `Your Desk as markdown files, as agreed. It will be deleted from our server and its backup on ${date}; I will write to you twice before then.`,
+};
+const pick = <T>(table: Record<string, T>, language: string | undefined): T => table[language ?? "fr"] ?? table.fr;
 
 /** What the agent is told once, before the Recruiter's first answer, so the niche skill runs as a chat. */
 const NICHE_CHAT_NOTICE =
@@ -113,9 +141,16 @@ export class Concierge {
     if (known === undefined) {
       if (input.kind === "tap") return;
       const invited = start?.[1] === undefined ? undefined : this.options.invites.redeem(start[1], userId);
-      return say(invited === undefined ? await this.turnAway(userId, sender) : await this.welcome(userId, invited, sender));
+      if (invited === undefined) return say(await this.turnAway(userId, sender));
+      return send(await this.welcome(userId, invited, sender));
     }
     if (start !== null) return;
+    const ended = this.options.partnerships.get(known.desk);
+    if (ended !== undefined) return say(pick(ENDED_REPLY, known.language)(deletionDate(ended.endedAt, known.timezone)));
+    if (known.dpaAcceptedAt === undefined) return this.dpaGate(known, input, send);
+    if (input.kind === "tap" && input.data === DPA_TAP) return;
+    const erasure = input.kind === "text" ? parseErasure(input.text) : null;
+    if (erasure !== null) return say(await this.erase(known, erasure));
     await this.options.engine.handle(channel, userId, input, send, hooks);
     await this.afterTurn(known.desk, known.name ?? userId).catch((error) => console.error("after-turn checks failed", error));
   }
@@ -141,7 +176,37 @@ export class Concierge {
     return STRANGER_REPLY[languageOf(sender)] ?? STRANGER_REPLY.fr;
   }
 
-  private async welcome(userId: string, name: string, sender: Sender): Promise<string> {
+  private get now(): Date {
+    return this.options.now?.() ?? new Date();
+  }
+
+  /** Until the DPA is accepted nothing reaches the agents: the Recruiter is shown the DPA again, or the acceptance is recorded. */
+  private async dpaGate(known: Recruiter, input: Input, send: (reply: Reply) => Promise<void>): Promise<void> {
+    const accepted = (input.kind === "tap" && input.data === DPA_TAP) || (input.kind === "text" && isDpaAcceptance(input.text));
+    if (!accepted) return send(dpaAsk(known.language, this.options.dpaUrl));
+    this.options.registry.acceptDpa(known.channel, known.userId, this.now.toISOString());
+    await this.options.notifyAdmin(`📝 ${known.name ?? known.userId} accepted the DPA.`).catch(() => {});
+    const niches = join(known.desk, "niches");
+    await send({ text: afterAcceptance(known.language, existsSync(niches) && readdirSync(niches).length > 0) });
+  }
+
+  /** "Efface Sophie Leroy": done on the Desk at once, between two agent turns, and confirmed in one line. */
+  private async erase(known: Recruiter, name: string): Promise<string> {
+    const { engine, afterErase, notifyAdmin } = this.options;
+    const today = dateIn(this.now, known.timezone);
+    const found = await engine.exclusive(known.desk, async () => {
+      if (!eraseFromDesk(known.desk, name, today)) return false;
+      engine.forgetSession(known.desk);
+      await afterErase?.(known.desk).catch(async (error) => {
+        console.error(`history rewrite after an erasure failed for ${known.desk}`, error);
+        await notifyAdmin(`⚠️ ${known.name ?? known.userId}: an erasure left the Desk's older history untouched (${String(error)}).`).catch(() => {});
+      });
+      return true;
+    });
+    return pick(found ? ERASED : NOT_FOUND_REPLY, known.language)(name);
+  }
+
+  private async welcome(userId: string, name: string, sender: Sender): Promise<Reply> {
     const { channel, registry, desksDir } = this.options;
     mkdirSync(desksDir, { recursive: true });
     let n = registry.all().length + 1;
@@ -153,7 +218,8 @@ export class Concierge {
     await this.options.notifyAdmin(`✅ ${name} opened their invite: Desk #${n} created.`).catch(() => {});
     this.options.engine.tell(desk, NICHE_CHAT_NOTICE);
     const firstName = sender.name.trim().split(/\s+/)[0] || name.split(/\s+/)[0];
-    return (WELCOME[language] ?? WELCOME.fr)(firstName);
+    const ask = dpaAsk(language, this.options.dpaUrl);
+    return { text: `${(WELCOME[language] ?? WELCOME.fr)(firstName)}\n\n${ask.text}`, buttons: ask.buttons };
   }
 
   private async admin(command: AdminCommand): Promise<string> {
@@ -165,12 +231,35 @@ export class Concierge {
     if (matches.length === 0) return `No Recruiter called ${command.name}.`;
     if (matches.length > 1) return `Several Recruiters match ${command.name}: ${matches.map((r) => r.name).join(", ")}. Use the full name.`;
     const { desk, name } = matches[0];
+    if (command.kind === "end-partnership") return this.endPartnership(matches[0]);
     if (command.kind === "raise-batches") {
       this.options.allowances.setBatches(desk, command.batches);
       return `${name} now has ${command.batches} Batches a month.`;
     }
     this.options.allowances.addEuros(desk, command.euros);
     return `${name} now has €${this.options.allowances.limits(desk).euros} of phone numbers a month.`;
+  }
+
+  /** Sends the Recruiter their Desk as a zip, then starts the countdown to its deletion; nothing starts when the zip cannot be sent. */
+  private async endPartnership(recruiter: Recruiter): Promise<string> {
+    const { engine, partnerships, sendDocument } = this.options;
+    const name = recruiter.name ?? recruiter.userId;
+    const previous = partnerships.get(recruiter.desk);
+    if (previous !== undefined) {
+      return `${name}'s partnership already ended on ${previous.endedAt.slice(0, 10)}; the Desk is deleted on ${deletionDate(previous.endedAt, recruiter.timezone)}.`;
+    }
+    const endedAt = this.now.toISOString();
+    const date = deletionDate(endedAt, recruiter.timezone);
+    try {
+      await engine.exclusive(recruiter.desk, () =>
+        sendDocument(recruiter.userId, `desk-${name.toLowerCase().normalize("NFD").replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "")}.zip`, zipDesk(recruiter.desk), pick(ZIP_CAPTION, recruiter.language)(date)),
+      );
+    } catch (error) {
+      return `Could not send ${name} their Desk (${String(error)}): the partnership is not ended.`;
+    }
+    const record: Omit<PartnershipRecord, "remindersSent"> = { desk: recruiter.desk, userId: recruiter.userId, name, language: recruiter.language, endedAt };
+    partnerships.end(record);
+    return `${name}'s partnership is ended: their Desk went to them as a zip and will be deleted from the server and its backup on ${date}, after two reminders.`;
   }
 
   /** The pings Vincent gets after a turn: an Allowance at 75% or 100%, and Enrichment failing twice for a person. */

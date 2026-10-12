@@ -7,6 +7,10 @@ function fakeApi(batches: TelegramUpdate[][]) {
   const calls: Array<[string, unknown]> = [];
   const remaining = [...batches];
   const api: TelegramApi = {
+    async upload(method, params, file) {
+      calls.push([method, { ...params, file }]);
+      return true;
+    },
     async call(method, params) {
       calls.push([method, params]);
       if (method === "getUpdates") return remaining.shift() ?? [];
@@ -198,5 +202,15 @@ describe("TelegramAdapter", () => {
     let seen: unknown;
     await new TelegramAdapter(api, async (_u, _i, sender) => ((seen = sender), null)).poll();
     expect(seen).toEqual({ name: "Jean Martin", username: "jmartin", language: "en" });
+  });
+});
+
+describe("sending a file", () => {
+  it("CH-12.S3 uploads a document to the user's chat with its caption", async () => {
+    const { api, calls } = fakeApi([]);
+    await new TelegramAdapter(api, saying()).pushDocument("42", "desk.zip", Buffer.from("PK"), "Votre Desk");
+    expect(calls).toEqual([
+      ["sendDocument", { chat_id: 42, caption: "Votre Desk", file: { field: "document", name: "desk.zip", data: Buffer.from("PK") } }],
+    ]);
   });
 });

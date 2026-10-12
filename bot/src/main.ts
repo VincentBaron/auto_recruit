@@ -1,12 +1,16 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
+import { execFile } from "node:child_process";
 import { fileURLToPath } from "node:url";
+import { promisify } from "node:util";
 import { Allowances } from "./allowance.ts";
 import { openBatches, readBatch } from "./batch-file.ts";
 import { Concierge } from "./concierge.ts";
-import { commitTurn, deskVersions } from "./desk-git.ts";
+import { realDeskDeleter } from "./desk-deletion.ts";
+import { commitTurn, deskVersions, pushDesk, squashHistory } from "./desk-git.ts";
 import { Engine } from "./engine.ts";
 import { loadInvites } from "./invites.ts";
+import { loadPartnerships, PartnershipEnder } from "./partnership.ts";
 import { DEFAULT_TIMEZONE, loadRegistry } from "./registry.ts";
 import { BatchReview } from "./review.ts";
 import { Scheduler, type SearchStatus } from "./scheduler.ts";
@@ -31,6 +35,8 @@ const exaApiKey = required("EXA_API_KEY");
 
 const api = botApi(required("TELEGRAM_BOT_TOKEN"));
 const adminId = required("ADMIN_TELEGRAM_ID");
+// The DPA every Recruiter accepts before the Niche discussion (ADR 0029): the URL is configuration, never a default.
+const dpaUrl = required("DPA_URL");
 const botUsername = ((await api.call("getMe")) as { username: string }).username;
 
 const registry = loadRegistry(join(dataDir, "recruiters.json"));
@@ -56,6 +62,7 @@ const engine = new Engine({
   commit: commitTurn,
   versions: deskVersions,
 });
+const partnerships = loadPartnerships(join(dataDir, "partnerships.json"));
 const userOfDesk = (desk: string) => registry.recruiters(CHANNEL).find((r) => r.desk === desk)?.userId;
 
 concierge = new Concierge({
@@ -69,6 +76,25 @@ concierge = new Concierge({
   botUsername,
   desksDir: join(dataDir, "desks"),
   failuresFile: join(dataDir, "enrichment-failures.json"),
+  dpaUrl,
+  partnerships,
+  sendDocument: (userId, name, data, caption) => adapter.pushDocument(userId, name, data, caption),
+  afterErase: async (desk) => {
+    await commitTurn(desk, "Erasure");
+    await squashHistory(desk);
+    await pushDesk(desk).catch((error) => console.error("backup upload after an erasure failed; the nightly backup will retry", error));
+  },
+});
+
+const run = promisify(execFile);
+const ender = new PartnershipEnder({
+  partnerships,
+  registry,
+  deleter: realDeskDeleter({ desksDir: join(dataDir, "desks"), exec: async (command, args, options) => String((await run(command, args, options)).stdout) }),
+  remind: (userId, text) => adapter.push(userId, { text, buttons: [] }),
+  notifyAdmin,
+  forget: (desk) => engine.forgetSession(desk),
+  now: () => new Date(),
 });
 
 let adapter: TelegramAdapter;
@@ -115,7 +141,7 @@ const readNotified = (): string[] => {
 };
 
 const scheduler = new Scheduler({
-  recruiters: () => registry.recruiters(CHANNEL),
+  recruiters: () => registry.recruiters(CHANNEL).filter((r) => partnerships.get(r.desk) === undefined),
   searchStatus: async (runId) => {
     const { text } = await checker.run({
       desk: scratch,
@@ -145,4 +171,10 @@ for (const { desk } of registry.recruiters(CHANNEL)) {
 
 const stop = new AbortController();
 for (const signal of ["SIGINT", "SIGTERM"] as const) process.on(signal, () => stop.abort());
-await Promise.all([adapter.run(stop.signal), scheduler.run(stop.signal, POLL_EVERY_MS)]);
+const endings = async () => {
+  while (!stop.signal.aborted) {
+    await ender.tick().catch((error) => console.error("partnership tick failed", error));
+    await new Promise((resolve) => setTimeout(resolve, POLL_EVERY_MS));
+  }
+};
+await Promise.all([adapter.run(stop.signal), scheduler.run(stop.signal, POLL_EVERY_MS), endings()]);

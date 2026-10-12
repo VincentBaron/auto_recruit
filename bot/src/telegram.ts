@@ -45,6 +45,8 @@ const keyboard = (screen: Screen) => ({
 
 export interface TelegramApi {
   call(method: string, params?: Record<string, unknown>): Promise<unknown>;
+  /** Sends a file as a multipart upload (`sendDocument`). */
+  upload?(method: string, params: Record<string, string | number>, file: { field: string; name: string; data: Buffer }): Promise<unknown>;
 }
 
 /** Handles one input from a user, sending each reply as soon as it is ready; sends nothing to an unknown user. */
@@ -58,9 +60,19 @@ export type OnInput = (
 
 /** The Bot API over HTTPS: long polling needs no webhook and no domain (ADR 0028). */
 export function botApi(token: string): TelegramApi {
+  const url = (method: string) => `https://api.telegram.org/bot${token}/${method}`;
   return {
+    async upload(method, params, file) {
+      const form = new FormData();
+      for (const [key, value] of Object.entries(params)) form.set(key, String(value));
+      form.set(file.field, new Blob([new Uint8Array(file.data)]), file.name);
+      const response = await fetch(url(method), { method: "POST", body: form });
+      const body = (await response.json()) as { ok: boolean; result: unknown; description?: string };
+      if (!body.ok) throw new Error(`Telegram ${method} failed: ${body.description}`);
+      return body.result;
+    },
     async call(method, params = {}) {
-      const response = await fetch(`https://api.telegram.org/bot${token}/${method}`, {
+      const response = await fetch(url(method), {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify(params),
@@ -100,6 +112,12 @@ export class TelegramAdapter {
         ...(last ? { reply_markup: keyboard(screen) } : {}),
       });
     }
+  }
+
+  /** Sends a file to a user, such as their Desk as a zip. */
+  async pushDocument(userId: string, name: string, data: Buffer, caption: string): Promise<void> {
+    if (this.api.upload === undefined) throw new Error("this Telegram API cannot upload files");
+    await this.api.upload("sendDocument", { chat_id: Number(userId), caption }, { field: "document", name, data });
   }
 
   /** One long-polling round: fetches updates and handles them. Turns of different Desks run in parallel. */
