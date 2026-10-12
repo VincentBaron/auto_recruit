@@ -318,3 +318,94 @@ describe("loadRegistry", () => {
     expect(readFileSync(join(dataDir, "recruiters.json"), "utf8")).toContain("42");
   });
 });
+
+describe("Voice notes", () => {
+  const voiceOf = (data = "audio") => ({ kind: "voice" as const, audio: async () => Buffer.from(data) });
+  const speak = async (engine: Engine, user = "42") => {
+    const replies: Reply[] = [];
+    const known = await engine.handle("telegram", user, voiceOf(), async (r) => void replies.push(r));
+    return known ? replies : null;
+  };
+  const makeVoiceEngine = (runner: AgentRunner, transcribe: (terms: string[]) => Promise<string>, calls: string[][] = []) =>
+    new Engine({
+      registry: loadRegistry(join(dataDir, "recruiters.json")),
+      runner,
+      sessionsFile: join(dataDir, "sessions.json"),
+      commit: async () => true,
+      versions,
+      voice: { transcribe: async (download, terms) => (await download(), calls.push(terms), transcribe(terms)) },
+    });
+
+  it("S1 runs the transcript as the Recruiter's message", async () => {
+    const seen: TurnRequest[] = [];
+    const engine = makeVoiceEngine(
+      { run: async (r) => (seen.push(r), ok("Noté")) },
+      async () => "J'ai eu Léa Morel, CTO chez Acme, elle est intéressée",
+    );
+    expect(await speak(engine)).toEqual([{ text: "Noté" }]);
+    expect(seen[0].prompt).toBe("J'ai eu Léa Morel, CTO chez Acme, elle est intéressée");
+  });
+
+  it("S2 biases the transcript with the person on the last Call Sheet and the Niche's job titles", async () => {
+    mkdirSync(join(desk, "niches"));
+    writeFileSync(join(desk, "niches", "fde.md"), "# FDE\n\n## Hiring Contacts\n\n- CTO\n\n## Candidates\n\n- Forward Deployed Engineer\n");
+    const calls: string[][] = [];
+    const engine = makeVoiceEngine(
+      { run: async (r) => ok(r.prompt === "Show the Call List, as the call skill says." ? "liste" : CARD) },
+      async () => "voicemail",
+      calls,
+    );
+    await say(engine, MENU.next);
+    await speak(engine);
+    expect(calls[0]).toEqual(["Léa Morel", "CTO", "Acme", "Forward Deployed Engineer"]);
+  });
+
+  it("S2 passes only the Niche titles when no Call Sheet was shown", async () => {
+    mkdirSync(join(desk, "niches"));
+    writeFileSync(join(desk, "niches", "fde.md"), "# FDE\n\n## Hiring Contacts\n\n- CTO\n");
+    const calls: string[][] = [];
+    const engine = makeVoiceEngine({ run: async () => ok("ok") }, async () => "bonjour", calls);
+    await speak(engine);
+    expect(calls[0]).toEqual(["CTO"]);
+  });
+
+  it("S3 treats a spoken Recap like a typed one: Undo and the next card follow", async () => {
+    history.head = "sha2";
+    history.recap = true;
+    const prompts: string[] = [];
+    const engine = makeVoiceEngine(
+      { run: async (r) => (prompts.push(r.prompt), ok(prompts.length === 1 ? "Noté: Voicemail" : CARD)) },
+      async () => "j'ai laissé un message",
+    );
+    const replies = (await speak(engine))!;
+    expect(replies[0].buttons?.[0][0]).toEqual({ label: "Undo", data: "undo:sha2" });
+    expect(replies[1].text).toBe(CARD);
+    expect(prompts[0]).toBe("j'ai laissé un message");
+  });
+
+  it("S4 asks to try again, with no turn, when the transcription fails or comes back empty", async () => {
+    const turns: string[] = [];
+    const runner: AgentRunner = { run: async (r) => (turns.push(r.prompt), ok("x")) };
+    for (const transcribe of [async () => Promise.reject(new Error("503")), async () => "  "]) {
+      const replies = (await speak(makeVoiceEngine(runner, transcribe)))!;
+      expect(replies).toHaveLength(1);
+      expect(replies[0].text).toMatch(/vocal/);
+    }
+    expect(turns).toEqual([]);
+  });
+
+  it("S5 does not download the voice note of someone with no Desk", async () => {
+    const calls: string[][] = [];
+    const engine = makeVoiceEngine({ run: async () => ok("x") }, async () => "x", calls);
+    expect(await speak(engine, "999")).toBeNull();
+    expect(calls).toEqual([]);
+  });
+
+  it("S6 says voice notes are off when no transcriber is set up", async () => {
+    const turns: string[] = [];
+    const engine = makeEngine({ run: async (r) => (turns.push(r.prompt), ok("x")) });
+    const replies = (await speak(engine))!;
+    expect(replies[0].text).toMatch(/vocal/);
+    expect(turns).toEqual([]);
+  });
+});
