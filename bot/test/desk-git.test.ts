@@ -1,9 +1,9 @@
 import { execFileSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { beforeEach, describe, expect, it } from "vitest";
-import { commitTurn, deskVersions, pushDesk } from "../src/desk-git.ts";
+import { commitTurn, deskVersions, pushDesk, squashHistory } from "../src/desk-git.ts";
 
 const git = (cwd: string, ...args: string[]) => execFileSync("git", args, { cwd, encoding: "utf8" }).trim();
 
@@ -101,5 +101,43 @@ describe("pushDesk", () => {
     writeFileSync(join(desk, "CALL_LIST.md"), "one");
     await commitTurn(desk, "first");
     await expect(pushDesk(desk)).rejects.toThrow();
+  });
+});
+
+describe("squashHistory", () => {
+  it("CH-12.S2 leaves one commit with the present files, and no older commit holds what was erased", async () => {
+    writeFileSync(join(desk, "CALL_LIST.md"), "Sophie Leroy\n");
+    await commitTurn(desk, "first");
+    const old = git(desk, "rev-parse", "HEAD");
+    writeFileSync(join(desk, "CALL_LIST.md"), "Léa Morel\n");
+    await commitTurn(desk, "second");
+    await squashHistory(desk);
+    expect(git(desk, "rev-list", "--count", "--all")).toBe("1");
+    expect(git(desk, "log", "--all", "-p")).not.toContain("Sophie");
+    expect(git(desk, "show", "HEAD:CALL_LIST.md")).toBe("Léa Morel");
+    expect(() => git(desk, "cat-file", "-e", old)).toThrow();
+    expect(git(desk, "status", "--porcelain")).toBe("");
+  });
+
+  it("CH-12.S2 keeps the branch and the origin, so the backup can be replaced", async () => {
+    const remote = mkdtempSync(join(tmpdir(), "remote-"));
+    git(remote, "init", "--bare", "-b", "main");
+    writeFileSync(join(desk, "a.md"), "Sophie Leroy\n");
+    await commitTurn(desk, "first");
+    git(desk, "remote", "add", "origin", remote);
+    await pushDesk(desk);
+    writeFileSync(join(desk, "a.md"), "nobody\n");
+    await commitTurn(desk, "second");
+    await squashHistory(desk);
+    expect(git(desk, "remote", "get-url", "origin")).toBe(remote);
+    expect(git(desk, "rev-parse", "--abbrev-ref", "HEAD")).toBe("main");
+    await pushDesk(desk);
+    expect(git(remote, "rev-list", "--count", "main")).toBe("1");
+    expect(git(remote, "log", "main", "-p")).not.toContain("Sophie");
+  });
+
+  it("CH-12.S2 does nothing to a folder that is not a repo", async () => {
+    await squashHistory(desk);
+    expect(existsSync(join(desk, ".git"))).toBe(false);
   });
 });

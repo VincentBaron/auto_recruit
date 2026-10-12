@@ -411,3 +411,49 @@ describe("Niche discussion", () => {
     expect(seen[1]).toBe("two");
   });
 });
+
+describe("exclusive work on a Desk", () => {
+  it("CH-12.S2 runs only once the Desk's running turn has ended, and holds the next turn until it is done", async () => {
+    const order: string[] = [];
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => (release = resolve));
+    const engine = makeEngine({
+      run: async (request) => {
+        order.push(`start ${request.prompt}`);
+        if (request.prompt === "one") await gate;
+        order.push(`end ${request.prompt}`);
+        return { text: "ok", sessionId: "s" };
+      },
+    });
+    const first = say(engine, "one");
+    await new Promise((r) => setTimeout(r, 10));
+    const task = engine.exclusive(desk, async () => void order.push("task"));
+    const second = say(engine, "two");
+    await new Promise((r) => setTimeout(r, 10));
+    expect(order).toEqual(["start one"]);
+    release();
+    await Promise.all([first, task, second]);
+    expect(order).toEqual(["start one", "end one", "task", "start two", "end two"]);
+  });
+
+  it("CH-12.S2 runs the task even if the turn before it failed, and returns its value", async () => {
+    const engine = makeEngine({ run: async () => Promise.reject(new Error("boom")) });
+    await say(engine, "one").catch(() => {});
+    expect(await engine.exclusive(desk, async () => 7)).toBe(7);
+  });
+
+  it("CH-12.S2 forgets a Desk's session, so its next turn starts a new one", async () => {
+    const seen: Array<string | undefined> = [];
+    const engine = makeEngine({
+      run: async (request) => {
+        seen.push(request.sessionId);
+        return { text: "ok", sessionId: "s1" };
+      },
+    });
+    await say(engine, "one");
+    await say(engine, "two");
+    engine.forgetSession(desk);
+    await say(engine, "three");
+    expect(seen).toEqual([undefined, "s1", undefined]);
+  });
+});
