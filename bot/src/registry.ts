@@ -1,21 +1,24 @@
 import { existsSync, readFileSync } from "node:fs";
 import { writeJsonAtomic } from "./json-file.ts";
 
+export const DEFAULT_TIMEZONE = "Europe/Paris";
+
 export interface Recruiter {
   channel: string;
   userId: string;
   desk: string;
   name?: string;
-  timezone?: string;
+  /** IANA timezone of the Recruiter, for the hours the bot may speak first. */
+  timezone: string;
   language?: string;
 }
-
-export const DEFAULT_TIMEZONE = "Europe/Paris";
 
 export interface Registry {
   /** The Desk folder of a Recruiter, from their id on a channel; undefined for anyone unknown. */
   deskFor(channel: string, userId: string): string | undefined;
   find(channel: string, userId: string): Recruiter | undefined;
+  /** Every Recruiter on a channel. */
+  recruiters(channel: string): Recruiter[];
   /** Recruiters whose name matches: the full name or a first name, ignoring case and accents. */
   byName(name: string): Recruiter[];
   all(): Recruiter[];
@@ -32,11 +35,15 @@ const fold = (text: string) =>
 
 /** Reads the Recruiter registry: a JSON list of `{ channel, userId, desk, name?, timezone?, language? }`. */
 export function loadRegistry(file: string): Registry {
-  const entries: Recruiter[] = existsSync(file) ? JSON.parse(readFileSync(file, "utf8")) : [];
+  const raw: Array<Omit<Recruiter, "timezone"> & { timezone?: string }> = existsSync(file)
+    ? JSON.parse(readFileSync(file, "utf8"))
+    : [];
+  const entries: Recruiter[] = raw.map((e) => ({ ...e, timezone: e.timezone ?? DEFAULT_TIMEZONE }));
   const find = (channel: string, userId: string) => entries.find((e) => e.channel === channel && e.userId === userId);
   return {
     deskFor: (channel, userId) => find(channel, userId)?.desk,
     find,
+    recruiters: (channel) => entries.filter((e) => e.channel === channel),
     byName(name) {
       const wanted = fold(name);
       if (wanted === "") return [];

@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import type { Screen } from "../src/review.ts";
 import { TelegramAdapter, type TelegramApi, type TelegramUpdate } from "../src/telegram.ts";
 
 function fakeApi(batches: TelegramUpdate[][]) {
@@ -60,6 +61,62 @@ describe("TelegramAdapter", () => {
     });
     await adapter.poll();
     expect(calls.filter(([m]) => m === "sendMessage")).toHaveLength(1);
+  });
+
+  describe("review cards", () => {
+    const card = { text: "1/2\nAna", buttons: [[{ label: "Keep", data: "k:fde:1" }]] };
+    const tap = (update_id: number, userId: number, data: string): TelegramUpdate => ({
+      update_id,
+      callback_query: { id: `cb${update_id}`, from: { id: userId }, data, message: { message_id: 77, chat: { id: userId } } },
+    });
+    const port = (screens: Array<Screen | null>) => ({
+      press: (_user: string, _data: string) => screens.shift() ?? null,
+      reason: (_user: string, _text: string) => screens.shift() ?? null,
+    });
+
+    it("edits the card in place with its buttons when one is tapped", async () => {
+      const { api, calls } = fakeApi([[tap(1, 42, "o:fde")]]);
+      await new TelegramAdapter(api, async () => null, port([card])).poll();
+      expect(calls.find(([m]) => m === "answerCallbackQuery")?.[1]).toEqual({ callback_query_id: "cb1" });
+      expect(calls.find(([m]) => m === "editMessageText")?.[1]).toEqual({
+        chat_id: 42,
+        message_id: 77,
+        text: "1/2\nAna",
+        reply_markup: { inline_keyboard: [[{ text: "Keep", callback_data: "k:fde:1" }]] },
+      });
+    });
+
+    it("ignores taps from users the review does not know", async () => {
+      const { api, calls } = fakeApi([[tap(1, 99, "k:fde:1")]]);
+      await new TelegramAdapter(api, async () => null, port([null])).poll();
+      expect(calls.some(([m]) => m === "editMessageText")).toBe(false);
+    });
+
+    it("takes a text as the reason of a Skip and edits the card, without running an agent turn", async () => {
+      const { api, calls } = fakeApi([[tap(1, 42, "s:fde:1")], [message(2, 42, "too junior")]]);
+      let turns = 0;
+      const adapter = new TelegramAdapter(api, async () => (turns++, "x"), port([{ text: "why?", buttons: [] }, card]));
+      await adapter.poll();
+      await adapter.poll();
+      expect(turns).toBe(0);
+      const edits = calls.filter(([m]) => m === "editMessageText").map(([, p]) => p as { message_id: number; text: string });
+      expect(edits.map((e) => [e.message_id, e.text])).toEqual([[77, "why?"], [77, "1/2\nAna"]]);
+    });
+
+    it("lets a text through to the agents when no reason is awaited", async () => {
+      const { api, calls } = fakeApi([[message(1, 42, "hello")]]);
+      await new TelegramAdapter(api, async () => "hi", port([null])).poll();
+      expect(calls.find(([m]) => m === "sendMessage")?.[1]).toEqual({ chat_id: 42, text: "hi" });
+    });
+
+    it("pushes a message with buttons to a user", async () => {
+      const { api, calls } = fakeApi([]);
+      await new TelegramAdapter(api, async () => null).push("42", card);
+      expect(calls[0]).toEqual([
+        "sendMessage",
+        { chat_id: 42, text: "1/2\nAna", reply_markup: { inline_keyboard: [[{ text: "Keep", callback_data: "k:fde:1" }]] } },
+      ]);
+    });
   });
 
   it("tells the handler who is writing, with their name, username and language", async () => {
