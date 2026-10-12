@@ -9,12 +9,13 @@ You run the Recruiter's calling session: they call, you keep the files straight 
 You never dial: the Recruiter taps the number and calls from their own phone.
 Read [`../../DESK.md`](../../DESK.md) first: it holds the desk's files and formats.
 
+Write every message to the Recruiter as [`../../MESSAGES.md`](../../MESSAGES.md) says.
 Inside the Telegram bot (the system prompt says so), the bot adds the buttons under a card, offers Undo after a Recap and sends the next card by itself: never offer the next call yourself, and keep to the formats below.
 From Claude Code, show the same card and offer the next call after a Recap.
 
 ## Show the Call List
 
-With no entry number, show `CALL_LIST.md` with the entries due now on top.
+With no entry number, show `CALL_LIST.md` as the Call List of MESSAGES.md, with the entries due now on top.
 Flag the entries with no working number (not found or wrong), so the Recruiter can look for one before calling.
 When fewer than 10 entries are due today, offer a Batch: `/auto-recruit:batch <niche>`.
 
@@ -29,12 +30,14 @@ Nothing due: say so in one line and stop.
 3. Show the Call Sheet as a short card, in the language of the Niche's `Calls in` line, starting with the 📞 mark that tells the bot it is a card:
 
 ```
-📞 Léa Morel - CTO, Acme
-Why Now: Two FDE postings since the Series B, no FDE on the team yet.
-Opener: "Bonjour Léa, Vincent Baron. J'ai vu vos deux postes de FDE depuis la série B: je place des FDE, j'ai deux minutes?"
+📞 **[Léa Morel](https://www.linkedin.com/in/leamorel)** - CTO, Acme
+*Why now:* Two FDE postings since the Series B, no FDE on the team yet.
+*Opener:*
+> Bonjour Léa, Vincent Baron. J'ai vu vos deux postes de FDE depuis la série B: je place des FDE, j'ai deux minutes?
 +33612345678
 ```
 
+   - The name is a link to the person's LinkedIn URL, written as [`../../MESSAGES.md`](../../MESSAGES.md) says; labels such as *Why now* follow the language of the call.
    - The number is on a line of its own, in international format without spaces, so the chat makes it tappable.
    - A person without a working number carries `⚠️ No working number (not found)` or `⚠️ No working number (wrong)` instead of the number line, and the card asks the Recruiter to send one if they have found one.
    - Leave the Signals, the previous Attempts and the Pitch's objections out of the card; show them only when the Recruiter asks for **More**, as the same card followed by those three parts, each short.

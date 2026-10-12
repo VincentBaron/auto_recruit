@@ -104,7 +104,7 @@ const APPROVE_COPY: Record<string, { button: string; started: string }> = {
 };
 const NICHE_TAP = /^niche:([a-z0-9][a-z0-9-]*)$/;
 
-const HELP_REQUEST = /^(aide|\?|help)$/i;
+const HELP_REQUEST = /^\/?(aide|\?|help)$/i;
 const STOP_REQUEST = /^(stop|arrête|arrete|assez)$/i;
 const PHONE_NUMBER = /^\+\d{8,15}$/m; // the number sits alone on its line on a card
 const CARD_MARK = "📞";

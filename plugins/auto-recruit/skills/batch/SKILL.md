@@ -39,14 +39,13 @@ Write them all to the Batch file, each `Surfaced`, and set its Status to `Propos
 ## 2. Review, one person at a time
 
 Show one person at a time, in the order of the Batch file, never the whole list: on a phone a long list does not fit one screen.
-Each card is `4/20`, the name, title and company, the Why Now, and the full LinkedIn URL (`https://` included) so the Recruiter can open it straight from the chat:
+Each card is `4/20`, the name as a link to their LinkedIn URL, title and company, and the Why Now, as the Batch card of [`../../MESSAGES.md`](../../MESSAGES.md):
 
 ```
 4/20
-Léa Morel
+**[Léa Morel](https://www.linkedin.com/in/leamorel)**
 CTO, Acme (Paris)
-Two FDE postings since the Series B in August
-https://www.linkedin.com/in/leamorel
+*Why now:* Two FDE postings since the Series B in August
 ```
 
 Ask `keep, skip, or keep the rest?` and wait.

@@ -29,7 +29,7 @@ beforeEach(() => {
 describe("BatchReview", () => {
   it("shows one card: position, person, Why Now, LinkedIn, with Keep, Skip and Keep the rest", () => {
     const screen = review.press(desk, "o:fde");
-    expect(screen.text).toBe("1/3\nAna\nCTO, Co1 (Paris)\nReason 1.\nhttps://www.linkedin.com/in/p1");
+    expect(screen.text).toBe("1/3\n**[Ana](https://www.linkedin.com/in/p1)**\nCTO, Co1 (Paris)\n*Why now:* Reason 1.");
     expect(screen.buttons).toEqual([
       [
         { label: "Keep", data: "k:fde:1" },
@@ -43,7 +43,7 @@ describe("BatchReview", () => {
     const screen = review.press(desk, "k:fde:1");
     expect(batchText()).toContain("### 1. Ana");
     expect(batchText()).toMatch(/Decision: Approved/);
-    expect(screen.text.startsWith("2/3\nBen")).toBe(true);
+    expect(screen.text.startsWith("2/3\n**[Ben]")).toBe(true);
   });
 
   it("asks why after Skip, then records the reason and shows the next card", () => {
@@ -54,7 +54,7 @@ describe("BatchReview", () => {
     expect(batchText()).toMatch(/Decision: Dropped\n/);
     const next = review.reason(desk, "too junior");
     expect(batchText()).toContain("Decision: Dropped - too junior");
-    expect(next?.text.startsWith("2/3\nBen")).toBe(true);
+    expect(next?.text.startsWith("2/3\n**[Ben]")).toBe(true);
   });
 
   it("takes 'no reason' as text or as the button", () => {
@@ -73,14 +73,14 @@ describe("BatchReview", () => {
     review.press(desk, "k:fde:1");
     review.press(desk, "k:fde:2");
     const afterRestart = new BatchReview(() => {});
-    expect(afterRestart.press(desk, "o:fde").text.startsWith("3/3\nCleo")).toBe(true);
+    expect(afterRestart.press(desk, "o:fde").text.startsWith("3/3\n**[Cleo]")).toBe(true);
   });
 
   it("ignores a tap on a card already decided and shows the current card", () => {
     review.press(desk, "k:fde:1");
     const screen = review.press(desk, "s:fde:1");
     expect(batchText()).not.toMatch(/Decision: Dropped/);
-    expect(screen.text.startsWith("2/3\nBen")).toBe(true);
+    expect(screen.text.startsWith("2/3\n**[Ben]")).toBe(true);
   });
 
   it("approves the Batch when the last card is decided", () => {

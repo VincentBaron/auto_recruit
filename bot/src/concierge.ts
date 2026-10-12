@@ -78,7 +78,7 @@ const WELCOME: Record<string, (name: string) => string> = {
 const NICHE_CHAT_NOTICE =
   "This Recruiter just got the welcome message, which asked what they place and where. Their next message is the answer: run the niche skill as a chat from it. " +
   "Ask one question per message with your recommended answer, short enough for a phone; they write or say their answers. " +
-  "For the calibration, show real people as short cards (name, title and company, the full LinkedIn URL on its own line), never a long list. " +
+  "For the calibration, show real people as short cards (the name as a link to their LinkedIn, then title and company, as MESSAGES.md says), never a long list. " +
   "When the Niche is settled, write niches/<slug>.md exactly in the DESK.md format and say you wrote it; the bot then offers an approve button. " +
   "Do not start the Batch yourself: the bot starts it when the Recruiter approves.";
 

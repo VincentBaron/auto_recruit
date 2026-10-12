@@ -1,4 +1,5 @@
 import { existsSync } from "node:fs";
+import { mdEscape } from "./format.ts";
 import { batchPath, editBatch, readBatch, setDecision, setStatus, type Person } from "./batch-file.ts";
 
 export interface Button {
@@ -10,6 +11,13 @@ export interface Button {
 export interface Screen {
   text: string;
   buttons: Button[][];
+}
+
+/** One person of a Batch: the name links to their LinkedIn, then their role and the Why Now. */
+function batchCard(person: Person, n: number, total: number): string {
+  const name = mdEscape(person.name);
+  const who = person.linkedin.startsWith("https://") ? `[${name}](${person.linkedin})` : name;
+  return `${n}/${total}\n**${who}**\n${mdEscape(`${person.title}, ${person.company}`)}\n*Why now:* ${mdEscape(person.whyNow)}`;
 }
 
 const NO_REASON = /^\s*(no reason|none|sans raison|aucune|non)\s*\.?\s*$/i;
@@ -59,7 +67,7 @@ export class BatchReview {
     if (keep) return this.card(desk, slug);
     this.awaiting.set(desk, { slug, number: person.number });
     return {
-      text: `Skipped: ${person.name}\nwhy? (optional) Send a message, or tap No reason.`,
+      text: `Skipped: ${mdEscape(person.name)}\nwhy? (optional) Send a message, or tap No reason.`,
       buttons: [[{ label: "No reason", data: `x:${slug}` }]],
     };
   }
@@ -81,7 +89,7 @@ export class BatchReview {
     if (index < 0) return this.approve(desk, slug);
     const person = batch.people[index]!;
     return {
-      text: `${index + 1}/${batch.people.length}\n${person.name}\n${person.title}, ${person.company}\n${person.whyNow}\n${person.linkedin}`,
+      text: batchCard(person, index + 1, batch.people.length),
       buttons: [
         [
           { label: "Keep", data: `k:${slug}:${person.number}` },

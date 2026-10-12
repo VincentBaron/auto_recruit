@@ -92,6 +92,32 @@ describe("TelegramAdapter", () => {
     });
   });
 
+  it("sends the Markdown subset as HTML: linked names, a quoted opener, a number left as text, and no link preview", async () => {
+    const { api, calls } = fakeApi([[message(1, 42, "hi")]]);
+    const card = "📞 **[Léa Morel](https://www.linkedin.com/in/leamorel)** - CTO, Acme\n*Opener:*\n> Bonjour Léa\n+33612345678";
+    await new TelegramAdapter(api, saying({ text: card })).poll();
+    expect(sent(calls)[0]).toMatchObject({
+      text: '📞 <b><a href="https://www.linkedin.com/in/leamorel">Léa Morel</a></b> - CTO, Acme\n<i>Opener:</i>\n<blockquote>Bonjour Léa</blockquote>\n+33612345678',
+      parse_mode: "HTML",
+      link_preview_options: { is_disabled: true },
+    });
+  });
+
+  it("resends as plain text, with the link kept, when Telegram cannot parse the markup", async () => {
+    const { api, calls } = fakeApi([[message(1, 42, "hi")]]);
+    const call = api.call.bind(api);
+    api.call = async (method, params) => {
+      if (method === "sendMessage" && (params as { parse_mode?: string }).parse_mode === "HTML") {
+        throw new Error("Telegram sendMessage failed: Bad Request: can't parse entities");
+      }
+      return call(method, params);
+    };
+    await new TelegramAdapter(api, saying({ text: "**[Léa](https://l.in/a)** *Opener:*" })).poll();
+    const last = sent(calls).at(-1)!;
+    expect(last.text).toBe("Léa (https://l.in/a) Opener:");
+    expect(last).not.toHaveProperty("parse_mode");
+  });
+
   it("renders buttons inline, with a copy-number button that copies to the clipboard", async () => {
     const { api, calls } = fakeApi([[message(1, 42, "hi")]]);
     const buttons = [
@@ -148,6 +174,8 @@ describe("TelegramAdapter", () => {
         chat_id: 42,
         message_id: 77,
         text: "1/2\nAna",
+        parse_mode: "HTML",
+        link_preview_options: { is_disabled: true },
         reply_markup: { inline_keyboard: [[{ text: "Keep", callback_data: "k:fde:1" }]] },
       });
     });
@@ -180,7 +208,13 @@ describe("TelegramAdapter", () => {
       await new TelegramAdapter(api, async () => null).push("42", card);
       expect(calls[0]).toEqual([
         "sendMessage",
-        { chat_id: 42, text: "1/2\nAna", reply_markup: { inline_keyboard: [[{ text: "Keep", callback_data: "k:fde:1" }]] } },
+        {
+          chat_id: 42,
+          text: "1/2\nAna",
+          parse_mode: "HTML",
+          link_preview_options: { is_disabled: true },
+          reply_markup: { inline_keyboard: [[{ text: "Keep", callback_data: "k:fde:1" }]] },
+        },
       ]);
     });
   });

@@ -1,4 +1,5 @@
 import { MENU, type Button, type Input, type Reply } from "./engine.ts";
+import { toPlainText, toTelegramHtml } from "./format.ts";
 import type { Sender } from "./concierge.ts";
 import type { Screen } from "./review.ts";
 import { splitMessage } from "./split.ts";
@@ -103,7 +104,7 @@ export class TelegramAdapter {
     const parts = splitMessage(screen.text, TELEGRAM_LIMIT);
     for (const [i, text] of parts.entries()) {
       const last = i === parts.length - 1 && screen.buttons.length > 0;
-      await this.api.call("sendMessage", {
+      await this.deliver("sendMessage", {
         chat_id: Number(userId),
         text,
         ...(last ? { reply_markup: keyboard(screen) } : {}),
@@ -135,7 +136,7 @@ export class TelegramAdapter {
   }
 
   private async edit(card: { chatId: number; messageId: number }, screen: Screen): Promise<void> {
-    await this.api.call("editMessageText", {
+    await this.deliver("editMessageText", {
       chat_id: card.chatId,
       message_id: card.messageId,
       text: screen.text,
@@ -223,7 +224,25 @@ export class TelegramAdapter {
     const parts = splitMessage(reply.text, TELEGRAM_LIMIT);
     for (const [i, part] of parts.entries()) {
       const markup = i < parts.length - 1 ? undefined : reply.buttons ? { inline_keyboard: inline(reply.buttons) } : MENU_KEYBOARD;
-      await this.api.call("sendMessage", { chat_id: chatId, text: part, ...(markup && { reply_markup: markup }) });
+      await this.deliver("sendMessage", { chat_id: chatId, text: part, ...(markup && { reply_markup: markup }) });
+    }
+  }
+
+  /**
+   * Sends or edits a message written in the Markdown subset (format.ts), as Telegram HTML and without link preview cards.
+   * If Telegram cannot parse the markup, the same words go out as plain text rather than not at all.
+   */
+  private async deliver(method: "sendMessage" | "editMessageText", params: { text: string } & Record<string, unknown>): Promise<void> {
+    try {
+      await this.api.call(method, {
+        ...params,
+        text: toTelegramHtml(params.text),
+        parse_mode: "HTML",
+        link_preview_options: { is_disabled: true },
+      });
+    } catch (error) {
+      if (!String(error).includes("can't parse entities")) throw error;
+      await this.api.call(method, { ...params, text: toPlainText(params.text), link_preview_options: { is_disabled: true } });
     }
   }
 }

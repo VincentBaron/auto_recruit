@@ -299,7 +299,7 @@ describe("Help", () => {
         throw new Error("no turn expected");
       },
     });
-    for (const text of ["aide", "?", "Aide"]) {
+    for (const text of ["aide", "?", "Aide", "/help"]) {
       const [reply] = (await say(engine, text))!;
       expect(reply.text).toContain(MENU.next);
       expect(reply.text).toContain(MENU.list);
