@@ -6,6 +6,7 @@ import { Allowances } from "../src/allowance.ts";
 import { Concierge, type Sender } from "../src/concierge.ts";
 import { Engine, type TurnRequest } from "../src/engine.ts";
 import { loadInvites } from "../src/invites.ts";
+import { loadPartnerships } from "../src/partnership.ts";
 import { loadRegistry } from "../src/registry.ts";
 
 const ADMIN = "1";
@@ -42,6 +43,9 @@ function build() {
     botUsername: "AutoRecruitBot",
     desksDir: join(data, "desks"),
     failuresFile: join(data, "failures.json"),
+    dpaUrl: "https://dpa.example/dpa",
+    partnerships: loadPartnerships(join(data, "partnerships.json")),
+    sendDocument: async () => {},
   });
   return { concierge, registry, allowances };
 }

@@ -1,7 +1,8 @@
 export type AdminCommand =
   | { kind: "invite"; name: string }
   | { kind: "raise-batches"; name: string; batches: number }
-  | { kind: "add-euros"; name: string; euros: number };
+  | { kind: "add-euros"; name: string; euros: number }
+  | { kind: "end-partnership"; name: string };
 
 const AMOUNT = String.raw`(\d+(?:[.,]\d+)?)`;
 const ADD_EUROS = new RegExp(

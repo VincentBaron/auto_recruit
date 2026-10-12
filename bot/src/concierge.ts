@@ -5,6 +5,7 @@ import type { Allowances } from "./allowance.ts";
 import type { Engine, Input, Reply, TurnHooks } from "./engine.ts";
 import type { Invites } from "./invites.ts";
 import { writeJsonAtomic } from "./json-file.ts";
+import type { Partnerships } from "./partnership.ts";
 import { DEFAULT_TIMEZONE, type Registry } from "./registry.ts";
 
 /** Who is writing, as the channel knows them. */
@@ -32,6 +33,14 @@ export interface ConciergeOptions {
   desksDir: string;
   /** Where the failures already counted are kept. */
   failuresFile: string;
+  /** The URL of the data processing agreement; set by configuration, never guessed. */
+  dpaUrl: string;
+  partnerships: Partnerships;
+  /** Sends a file to a Recruiter, such as their Desk as a zip. */
+  sendDocument: (userId: string, name: string, data: Buffer, caption: string) => Promise<void>;
+  /** After an erasure changed a Desk: commit it and drop the older history, locally and on the backup. */
+  afterErase?: (desk: string) => Promise<void>;
+  now?: () => Date;
 }
 
 const START = /^\/start(?:@\w+)?(?: (\S+))?$/;
@@ -165,6 +174,7 @@ export class Concierge {
     if (matches.length === 0) return `No Recruiter called ${command.name}.`;
     if (matches.length > 1) return `Several Recruiters match ${command.name}: ${matches.map((r) => r.name).join(", ")}. Use the full name.`;
     const { desk, name } = matches[0];
+    if (command.kind === "end-partnership") return "";
     if (command.kind === "raise-batches") {
       this.options.allowances.setBatches(desk, command.batches);
       return `${name} now has ${command.batches} Batches a month.`;

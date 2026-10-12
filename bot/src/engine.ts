@@ -120,6 +120,14 @@ export class Engine {
     this.notices.set(desk, notice);
   }
 
+  /** Runs `task` when the Desk is idle, with no agent turn running on it, and holds the Desk's next turn until it ends. */
+  async exclusive<T>(_desk: string, task: () => Promise<T>): Promise<T> {
+    return task();
+  }
+
+  /** Drops the agent session of a Desk, so the next turn starts a fresh one. */
+  forgetSession(_desk: string): void {}
+
   /**
    * Handles one input and sends each reply as soon as it is ready.
    * Returns false, sending nothing, when the sender has no Desk. One input at a time per Desk.

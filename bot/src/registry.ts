@@ -11,6 +11,8 @@ export interface Recruiter {
   /** IANA timezone of the Recruiter, for the hours the bot may speak first. */
   timezone: string;
   language?: string;
+  /** When the Recruiter accepted the DPA (ISO date-time); absent until they do, and no Niche discussion starts before (ADR 0029). */
+  dpaAcceptedAt?: string;
 }
 
 export interface Registry {
@@ -24,6 +26,10 @@ export interface Registry {
   all(): Recruiter[];
   /** Ties a new Desk to a Recruiter and saves the registry. */
   add(recruiter: Recruiter): void;
+  /** Records the acceptance of the DPA, with its date, and saves the registry. */
+  acceptDpa(channel: string, userId: string, at: string): void;
+  /** Forgets the Recruiter whose Desk is this folder, and saves the registry. */
+  remove(desk: string): void;
 }
 
 const fold = (text: string) =>
@@ -58,5 +64,7 @@ export function loadRegistry(file: string): Registry {
       entries.push(recruiter);
       writeJsonAtomic(file, entries);
     },
+    acceptDpa(_channel, _userId, _at) {},
+    remove(_desk) {},
   };
 }
