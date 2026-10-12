@@ -107,6 +107,9 @@ export class Engine {
 
   constructor(private readonly options: EngineOptions) {}
 
+  /** Tells the agent something before its next turn in this Desk, such as the welcome message the Recruiter just got. */
+  tell(_desk: string, _notice: string): void {}
+
   /**
    * Handles one input and sends each reply as soon as it is ready.
    * Returns false, sending nothing, when the sender has no Desk. One input at a time per Desk.
