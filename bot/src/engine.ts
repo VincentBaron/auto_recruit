@@ -22,6 +22,28 @@ export interface TurnHooks {
   onTurnEnd?: () => void;
 }
 
+/** A button under a message: a tap the engine gets back as `data`, or a number to copy to the clipboard. */
+export type Button = { label: string; data: string } | { label: string; copy: string };
+
+/** What the engine says back: some text and, optionally, rows of buttons. */
+export interface Reply {
+  text: string;
+  buttons?: Button[][];
+}
+
+/** What a Recruiter did: typed (or said) something, or tapped a button of an earlier reply. */
+export type Input = { kind: "text"; text: string } | { kind: "tap"; data: string };
+
+/** The Desk's git history, as far as the engine needs it to offer Undo. */
+export interface DeskVersions {
+  /** The last commit of the Desk, or null when it has none. */
+  head(desk: string): Promise<string | null>;
+  /** Whether the last commit added an Attempt to a person's file. */
+  addsAttempt(desk: string): Promise<boolean>;
+  /** Restores the Desk as it was before commit `sha`; false when `sha` is no longer the last commit. */
+  undo(desk: string, sha: string): Promise<boolean>;
+}
+
 export interface EngineOptions {
   registry: Registry;
   runner: AgentRunner;
@@ -29,40 +51,152 @@ export interface EngineOptions {
   sessionsFile: string;
   /** Commits what a turn changed in a Desk. */
   commit: (desk: string, message: string) => Promise<boolean>;
+  versions: DeskVersions;
 }
 
+/** The fixed menu under the keyboard. */
+export const MENU = {
+  next: "📞 Prochain appel",
+  list: "📋 Liste d'appels",
+  batch: "➕ Nouveau Batch",
+};
+
+const NEXT_CALL_PROMPT =
+  "Show the next due Call Sheet as a card, as the call skill says. Record nothing unless a check of the skill fails.";
+const MORE_PROMPT =
+  "More: show the card of the person just shown again, expanded with their Signals, their previous Attempts and the Pitch's objections.";
+const RECAPS: Record<string, string> = {
+  "recap:No Answer": "Recap of the call just shown: No Answer.",
+  "recap:Voicemail": "Recap of the call just shown: Voicemail.",
+  "recap:skip":
+    "Skip for now, for the person just shown: record no Attempt, push them to the next slot on the Call List, and answer with one line.",
+};
+const MENU_PROMPTS: Record<string, string> = {
+  [MENU.next]: NEXT_CALL_PROMPT,
+  [MENU.list]: "Show the Call List, as the call skill says.",
+  [MENU.batch]: "Start a new Batch for my Niche, as the batch skill says.",
+};
+
+const HELP = [
+  "Voici ce que je sais faire:",
+  `${MENU.next}: la fiche du prochain appel, avec son numéro à toucher.`,
+  `${MENU.list}: qui appeler et quand.`,
+  `${MENU.batch}: une nouvelle sélection de personnes à appeler.`,
+  "Après un appel, touchez No Answer, Voicemail ou Skip for now, ou racontez-moi en quelques mots. Undo annule la dernière note.",
+  "Envoyez un numéro trouvé ailleurs pour le noter. « stop » arrête l'enchaînement des fiches.",
+  "Tout le reste, écrivez-le simplement: une nouvelle niche, qui est Léa, etc.",
+].join("\n");
+
+const HELP_REQUEST = /^(aide|\?|help)$/i;
+const STOP_REQUEST = /^(stop|arrête|arrete|assez)$/i;
+const PHONE_NUMBER = /^\+\d{8,15}$/m; // the number sits alone on its line on a card
+const CARD_MARK = "📞";
+
 /**
- * The conversation engine: one message in, one agent turn in the sender's Desk, one answer out.
+ * The conversation engine: one message in, one agent turn in the sender's Desk, replies out.
  * It knows nothing about the channel; an adapter maps its updates to `handle` calls (ADR 0026).
  */
 export class Engine {
   private readonly queues = new Map<string, Promise<unknown>>();
+  /** Inputs of a Desk accepted and not yet started, so a card is not chained over a waiting message. */
+  private readonly waiting = new Map<string, number>();
+  /** Desks where the Recruiter said stop: no card arrives by itself until they ask for the next call. */
+  private readonly stopped = new Set<string>();
+  /** What the agent must be told before its next turn, such as an Undo it did not see. */
+  private readonly notices = new Map<string, string>();
 
   constructor(private readonly options: EngineOptions) {}
 
-  /** Returns the answer, or null when the sender has no Desk. One turn at a time per Desk. */
-  async handle(channel: string, userId: string, text: string, hooks: TurnHooks = {}): Promise<string | null> {
+  /**
+   * Handles one input and sends each reply as soon as it is ready.
+   * Returns false, sending nothing, when the sender has no Desk. One input at a time per Desk.
+   */
+  async handle(
+    channel: string,
+    userId: string,
+    input: Input,
+    send: (reply: Reply) => Promise<void>,
+    hooks: TurnHooks = {},
+  ): Promise<boolean> {
     const desk = this.options.registry.deskFor(channel, userId);
-    if (desk === undefined) return null;
+    if (desk === undefined) return false;
+    this.waiting.set(desk, (this.waiting.get(desk) ?? 0) + 1);
     const previous = this.queues.get(desk) ?? Promise.resolve();
-    const turn = previous.catch(() => {}).then(() => this.turn(desk, text, hooks));
-    this.queues.set(desk, turn);
-    return turn;
+    const run = previous.catch(() => {}).then(() => {
+      this.waiting.set(desk, (this.waiting.get(desk) ?? 1) - 1);
+      return this.dispatch(desk, input, send, hooks);
+    });
+    this.queues.set(desk, run);
+    await run;
+    return true;
   }
 
-  private async turn(desk: string, text: string, hooks: TurnHooks): Promise<string> {
+  private async dispatch(desk: string, input: Input, send: (reply: Reply) => Promise<void>, hooks: TurnHooks): Promise<void> {
+    if (input.kind === "tap" && input.data.startsWith("undo:")) return this.undo(desk, input.data.slice(5), send, hooks);
+
+    const text = input.kind === "text" ? input.text.trim() : "";
+    if (HELP_REQUEST.test(text)) return send({ text: HELP });
+    if (STOP_REQUEST.test(text)) {
+      this.stopped.add(desk);
+      return send({ text: `D'accord, j'arrête les fiches. ${MENU.next} pour reprendre.` });
+    }
+
+    const menuPrompt = MENU_PROMPTS[text];
+    if (menuPrompt === MENU_PROMPTS[MENU.next]) this.stopped.delete(desk);
+    const isMore = input.kind === "tap" && input.data === "more";
+    const prompt = input.kind === "tap" ? (isMore ? MORE_PROMPT : RECAPS[input.data]) : (menuPrompt ?? text);
+    if (prompt === undefined) return;
+
+    const label = input.kind === "tap" ? input.data : text;
+    const answer = await this.turn(desk, prompt, label, hooks);
+    const isRecap =
+      menuPrompt === undefined &&
+      !isMore &&
+      answer.sha !== null &&
+      (input.kind === "tap" || (await this.options.versions.addsAttempt(desk)));
+
+    if (!isRecap) return send(toReply(answer.text, isMore));
+    await send({ text: answer.text, buttons: [[{ label: "Undo", data: `undo:${answer.sha}` }]] });
+    if (!this.stopped.has(desk) && (this.waiting.get(desk) ?? 0) === 0) await this.sendNextCard(desk, send, hooks);
+  }
+
+  private async undo(desk: string, sha: string, send: (reply: Reply) => Promise<void>, hooks: TurnHooks): Promise<void> {
+    if (!(await this.options.versions.undo(desk, sha))) {
+      return send({ text: "Trop tard pour annuler: le Desk a changé depuis cette note." });
+    }
+    this.notices.set(desk, "The Recruiter tapped Undo: the Desk is back exactly as before your last Recap. Forget that Recap.");
+    await send({ text: "↩️ Annulé." });
+    await this.sendNextCard(desk, send, hooks);
+  }
+
+  private async sendNextCard(desk: string, send: (reply: Reply) => Promise<void>, hooks: TurnHooks): Promise<void> {
+    const answer = await this.turn(desk, NEXT_CALL_PROMPT, "next call", hooks);
+    await send(toReply(answer.text, false));
+  }
+
+  /** Runs one agent turn and commits it; `sha` is the commit it made, or null when it changed nothing. */
+  private async turn(desk: string, prompt: string, label: string, hooks: TurnHooks): Promise<{ text: string; sha: string | null }> {
     hooks.onTurnStart?.();
+    const notice = this.notices.get(desk);
+    let result: TurnResult;
+    let committed = false;
     try {
       const sessions = this.readSessions();
-      const result = await this.options.runner.run({ desk, prompt: text, sessionId: sessions[desk] });
+      result = await this.options.runner.run({
+        desk,
+        prompt: notice === undefined ? prompt : `[${notice}]\n\n${prompt}`,
+        sessionId: sessions[desk],
+      });
+      this.notices.delete(desk);
       this.writeSessions({ ...this.readSessions(), [desk]: result.sessionId });
-      return result.text;
     } finally {
       hooks.onTurnEnd?.();
-      await this.options.commit(desk, `Turn: ${text.replace(/\s+/g, " ").slice(0, 72)}`).catch((error) => {
+      committed = await this.options.commit(desk, `Turn: ${label.replace(/\s+/g, " ").slice(0, 72)}`).catch((error) => {
         console.error(`commit failed for ${desk}`, error);
+        return false;
       });
     }
+    return { text: result.text, sha: committed ? await this.options.versions.head(desk) : null };
   }
 
   private readSessions(): Record<string, string> {
@@ -74,4 +208,19 @@ export class Engine {
     writeFileSync(tmp, JSON.stringify(sessions, null, 2));
     renameSync(tmp, this.options.sessionsFile);
   }
+}
+
+/** A card (marked 📞) gets the call buttons, and a copy-number button when the Desk has a number to give. */
+function toReply(text: string, expanded: boolean): Reply {
+  if (!text.startsWith(CARD_MARK)) return { text };
+  const rows: Button[][] = [
+    [
+      { label: "No Answer", data: "recap:No Answer" },
+      { label: "Voicemail", data: "recap:Voicemail" },
+    ],
+    [{ label: "Skip for now", data: "recap:skip" }, ...(expanded ? [] : [{ label: "More", data: "more" }])],
+  ];
+  const number = PHONE_NUMBER.exec(text)?.[0];
+  if (number !== undefined) rows.push([{ label: "Copy number", copy: number }]);
+  return { text, buttons: rows };
 }

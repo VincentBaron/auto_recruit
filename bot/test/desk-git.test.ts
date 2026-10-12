@@ -1,9 +1,9 @@
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { beforeEach, describe, expect, it } from "vitest";
-import { commitTurn, pushDesk } from "../src/desk-git.ts";
+import { commitTurn, deskVersions, pushDesk } from "../src/desk-git.ts";
 
 const git = (cwd: string, ...args: string[]) => execFileSync("git", args, { cwd, encoding: "utf8" }).trim();
 
@@ -33,6 +33,56 @@ describe("commitTurn", () => {
     writeFileSync(join(desk, "CALL_LIST.md"), "two");
     await commitTurn(desk, "second");
     expect(git(desk, "rev-list", "--count", "HEAD")).toBe("2");
+  });
+});
+
+describe("deskVersions", () => {
+  const person = (attempts: string) => `# Léa Morel\n\n## Attempts\n\n${attempts}`;
+
+  async function deskWithOneCall() {
+    mkdirSync(join(desk, "prospects"));
+    writeFileSync(join(desk, "CALL_LIST.md"), "| 1 | Léa | due 2026-10-13 am |\n");
+    writeFileSync(join(desk, "prospects", "acme-com.md"), person("- 2026-10-12 11:05 - No Answer\n"));
+    await commitTurn(desk, "setup");
+  }
+
+  it("sees an Attempt added to a person's file, and nothing else", async () => {
+    await deskWithOneCall();
+    writeFileSync(join(desk, "TODO.md"), "# TODO\n");
+    await commitTurn(desk, "todo");
+    expect(await deskVersions.addsAttempt(desk)).toBe(false);
+    writeFileSync(join(desk, "prospects", "acme-com.md"), person("- 2026-10-12 11:05 - No Answer\n- 2026-10-13 10:20 - Voicemail\n"));
+    await commitTurn(desk, "recap");
+    expect(await deskVersions.addsAttempt(desk)).toBe(true);
+  });
+
+  it("undoes the last turn and leaves the Desk exactly as before it", async () => {
+    await deskWithOneCall();
+    const before = git(desk, "rev-parse", "HEAD");
+    writeFileSync(join(desk, "prospects", "acme-com.md"), person("- 2026-10-13 10:20 - Voicemail\n"));
+    writeFileSync(join(desk, "CALL_LIST.md"), "| 1 | Léa | due 2026-10-14 pm |\n");
+    writeFileSync(join(desk, "DO_NOT_CALL.md"), "# Do Not Call\n");
+    await commitTurn(desk, "recap");
+    const sha = (await deskVersions.head(desk))!;
+    expect(await deskVersions.undo(desk, sha)).toBe(true);
+    expect(git(desk, "rev-parse", "HEAD")).toBe(before);
+    expect(git(desk, "status", "--porcelain")).toBe("");
+    expect(git(desk, "diff", before)).toBe("");
+  });
+
+  it("refuses to undo a commit that is no longer the last one", async () => {
+    await deskWithOneCall();
+    writeFileSync(join(desk, "TODO.md"), "one");
+    await commitTurn(desk, "recap");
+    const sha = (await deskVersions.head(desk))!;
+    writeFileSync(join(desk, "TODO.md"), "two");
+    await commitTurn(desk, "later");
+    expect(await deskVersions.undo(desk, sha)).toBe(false);
+    expect(git(desk, "rev-list", "--count", "HEAD")).toBe("3");
+  });
+
+  it("has no head in a Desk that is not versioned yet", async () => {
+    expect(await deskVersions.head(desk)).toBeNull();
   });
 });
 

@@ -2,7 +2,7 @@ import { existsSync, mkdirSync, readdirSync, readFileSync } from "node:fs";
 import { join, relative } from "node:path";
 import { parseAdminCommand, type AdminCommand } from "./admin.ts";
 import type { Allowances } from "./allowance.ts";
-import type { Engine, TurnHooks } from "./engine.ts";
+import type { Engine, Input, Reply, TurnHooks } from "./engine.ts";
 import type { Invites } from "./invites.ts";
 import { writeJsonAtomic } from "./json-file.ts";
 import { DEFAULT_TIMEZONE, type Registry } from "./registry.ts";
@@ -58,24 +58,33 @@ export class Concierge {
 
   constructor(private readonly options: ConciergeOptions) {}
 
-  /** Returns the answer, or null to stay silent. */
-  async handle(userId: string, text: string, sender: Sender, hooks: TurnHooks = {}): Promise<string | null> {
+  /** Sends each reply through `send`; stays silent for an unknown user, unless it is an invite or a stranger's first line. */
+  async handle(
+    userId: string,
+    input: Input,
+    sender: Sender,
+    send: (reply: Reply) => Promise<void>,
+    hooks: TurnHooks = {},
+  ): Promise<void> {
     const { channel, registry } = this.options;
-    const isAdmin = userId === this.options.adminId;
-    if (isAdmin) {
+    const say = async (text: string | null) => {
+      if (text !== null) await send({ text });
+    };
+    const text = input.kind === "text" ? input.text : "";
+    if (input.kind === "text" && userId === this.options.adminId) {
       const command = parseAdminCommand(text);
-      if (command !== null) return this.admin(command);
+      if (command !== null) return say(await this.admin(command));
     }
     const start = START.exec(text.trim());
     const known = registry.find(channel, userId);
     if (known === undefined) {
+      if (input.kind === "tap") return;
       const invited = start?.[1] === undefined ? undefined : this.options.invites.redeem(start[1], userId);
-      return invited === undefined ? this.turnAway(userId, sender) : this.welcome(userId, invited, sender);
+      return say(invited === undefined ? await this.turnAway(userId, sender) : await this.welcome(userId, invited, sender));
     }
-    if (start !== null) return null;
-    const answer = await this.options.engine.handle(channel, userId, text, hooks);
+    if (start !== null) return;
+    await this.options.engine.handle(channel, userId, input, send, hooks);
     await this.afterTurn(known.desk, known.name ?? userId).catch((error) => console.error("after-turn checks failed", error));
-    return answer;
   }
 
   /** An Exa run that errored during a turn of this Desk. */

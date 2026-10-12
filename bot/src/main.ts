@@ -4,7 +4,7 @@ import { fileURLToPath } from "node:url";
 import { Allowances } from "./allowance.ts";
 import { openBatches, readBatch } from "./batch-file.ts";
 import { Concierge } from "./concierge.ts";
-import { commitTurn } from "./desk-git.ts";
+import { commitTurn, deskVersions } from "./desk-git.ts";
 import { Engine } from "./engine.ts";
 import { loadInvites } from "./invites.ts";
 import { DEFAULT_TIMEZONE, loadRegistry } from "./registry.ts";
@@ -21,6 +21,8 @@ function required(name: string): string {
 
 const CHANNEL = "telegram";
 const POLL_EVERY_MS = 60_000;
+/** The taps of the Batch review cards (keep, skip, keep the rest, no reason); other taps belong to the Call Sheet. */
+const BATCH_TAP = /^[ksrxo]:/;
 
 const here = dirname(fileURLToPath(import.meta.url));
 const dataDir = resolve(process.env.AUTO_RECRUIT_DATA ?? join(here, "..", "data"));
@@ -52,6 +54,7 @@ const engine = new Engine({
   }),
   sessionsFile: join(dataDir, "sessions.json"),
   commit: commitTurn,
+  versions: deskVersions,
 });
 const userOfDesk = (desk: string) => registry.recruiters(CHANNEL).find((r) => r.desk === desk)?.userId;
 
@@ -76,20 +79,19 @@ const applyBatch = (desk: string, slug: string) => {
   // Applying is an agent turn, so it waits its turn in the Desk's queue like any other.
   const prompt = `The Recruiter has finished reviewing the Batch of Niche ${slug}: it is Approved. Apply it (steps 3 and 4 of the batch skill) and give the report.`;
   engine
-    .handle(CHANNEL, userId, prompt)
-    .then((text) => adapter.push(userId, { text: text ?? "", buttons: [] }))
+    .handle(CHANNEL, userId, { kind: "text", text: prompt }, (reply) => adapter.push(userId, { text: reply.text, buttons: [] }))
     .catch((error) => console.error(`applying ${slug} failed`, error));
 };
 const review = new BatchReview(applyBatch);
 
 adapter = new TelegramAdapter(
   api,
-  (userId, text, typing, sender) =>
-    concierge!.handle(userId, text, sender, { onTurnStart: typing.start, onTurnEnd: typing.stop }),
+  (userId, input, sender, typing, send) =>
+    concierge!.handle(userId, input, sender, send, { onTurnStart: typing.start, onTurnEnd: typing.stop }),
   {
     press: (userId, data) => {
       const desk = registry.deskFor(CHANNEL, userId);
-      return desk === undefined ? null : review.press(desk, data);
+      return desk === undefined || !BATCH_TAP.test(data) ? null : review.press(desk, data);
     },
     reason: (userId, text) => {
       const desk = registry.deskFor(CHANNEL, userId);
@@ -125,7 +127,7 @@ const scheduler = new Scheduler({
   finishSearch: async (desk, slug) => {
     const userId = userOfDesk(desk);
     if (userId === undefined) return;
-    await engine.handle(CHANNEL, userId, `/auto-recruit:batch --resume ${slug}`);
+    await engine.handle(CHANNEL, userId, { kind: "text", text: `/auto-recruit:batch --resume ${slug}` }, async () => {});
   },
   notify: (userId, screen) => adapter.push(userId, screen),
   onFailure: (desk, slug, error) => console.error(`search failed for ${slug} in ${desk}`, error),

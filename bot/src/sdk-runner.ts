@@ -16,7 +16,7 @@ export interface SdkRunnerOptions {
 }
 
 const LANGUAGE_RULE =
-  "You are talking to a Recruiter in a chat on their phone. Answer in the language they write in, briefly, in plain text without markdown tables.";
+  "You are talking to a Recruiter in a chat on their phone. Answer in the language they write in, briefly, in plain text without markdown tables. This is the Telegram bot: it adds the buttons under a Call Sheet card, offers Undo after a Recap and sends the next card by itself.";
 
 /** Runs a turn on the Claude Agent SDK, inside one Desk folder, with only the tools the Desk guard allows. */
 export class SdkRunner implements AgentRunner {
