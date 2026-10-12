@@ -1,13 +1,22 @@
 import type { Screen } from "./review.ts";
+import type { Sender } from "./concierge.ts";
 import { splitMessage } from "./split.ts";
 
 const TELEGRAM_LIMIT = 4096;
 const TYPING_REFRESH_MS = 4000;
 const ERROR_REPLY = "Désolé, une erreur est survenue de mon côté. Réessayez dans un instant.";
 
+export interface TelegramUser {
+  id: number;
+  first_name?: string;
+  last_name?: string;
+  username?: string;
+  language_code?: string;
+}
+
 export interface TelegramUpdate {
   update_id: number;
-  message?: { chat: { id: number }; from?: { id: number }; text?: string };
+  message?: { chat: { id: number }; from?: TelegramUser; text?: string };
   callback_query?: { id: string; from: { id: number }; data?: string; message?: { message_id: number; chat: { id: number } } };
 }
 
@@ -26,7 +35,12 @@ export interface TelegramApi {
 }
 
 /** Answers one message from a user: the text to send back, or null to stay silent (unknown user). */
-export type OnMessage = (userId: string, text: string, typing: { start(): void; stop(): void }) => Promise<string | null>;
+export type OnMessage = (
+  userId: string,
+  text: string,
+  typing: { start(): void; stop(): void },
+  sender: Sender,
+) => Promise<string | null>;
 
 /** The Bot API over HTTPS: long polling needs no webhook and no domain (ADR 0028). */
 export function botApi(token: string): TelegramApi {
@@ -42,6 +56,11 @@ export function botApi(token: string): TelegramApi {
       return body.result;
     },
   };
+}
+
+function senderOf(user: TelegramUser): Sender {
+  const name = [user.first_name, user.last_name].filter(Boolean).join(" ");
+  return { name: name || user.username || String(user.id), username: user.username, language: user.language_code };
 }
 
 /** The Telegram channel adapter: turns updates into messages for the engine and answers back. */
@@ -139,7 +158,7 @@ export class TelegramAdapter {
       stop: () => clearInterval(timer),
     };
     try {
-      const answer = await this.onMessage(String(message.from.id), message.text, typing);
+      const answer = await this.onMessage(String(message.from.id), message.text, typing, senderOf(message.from));
       if (answer === null) return;
       await this.send(chatId, answer);
     } catch (error) {

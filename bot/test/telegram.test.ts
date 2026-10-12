@@ -118,4 +118,19 @@ describe("TelegramAdapter", () => {
       ]);
     });
   });
+
+  it("tells the handler who is writing, with their name, username and language", async () => {
+    const update: TelegramUpdate = {
+      update_id: 1,
+      message: {
+        chat: { id: 5 },
+        from: { id: 5, first_name: "Jean", last_name: "Martin", username: "jmartin", language_code: "en" },
+        text: "/start abc",
+      },
+    };
+    const { api } = fakeApi([[update]]);
+    let seen: unknown;
+    await new TelegramAdapter(api, async (_u, _t, _typing, sender) => ((seen = sender), null)).poll();
+    expect(seen).toEqual({ name: "Jean Martin", username: "jmartin", language: "en" });
+  });
 });
