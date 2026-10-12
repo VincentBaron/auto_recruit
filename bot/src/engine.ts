@@ -1,4 +1,6 @@
-import { existsSync, readFileSync, renameSync, writeFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
+import { checkNiche } from "./niche-file.ts";
 import type { Registry } from "./registry.ts";
 
 export interface TurnRequest {
@@ -87,6 +89,12 @@ const HELP = [
   "Tout le reste, écrivez-le simplement: une nouvelle niche, qui est Léa, etc.",
 ].join("\n");
 
+const APPROVE_COPY: Record<string, { button: string; started: string }> = {
+  fr: { button: "✅ Valider cette niche", started: "C'est validé. Je lance votre première sélection et je vous écris dès qu'elle est prête." },
+  en: { button: "✅ Approve this Niche", started: "Approved. I am starting your first Batch and I will write to you as soon as it is ready." },
+};
+const NICHE_TAP = /^niche:([a-z0-9][a-z0-9-]*)$/;
+
 const HELP_REQUEST = /^(aide|\?|help)$/i;
 const STOP_REQUEST = /^(stop|arrête|arrete|assez)$/i;
 const PHONE_NUMBER = /^\+\d{8,15}$/m; // the number sits alone on its line on a card
@@ -106,6 +114,11 @@ export class Engine {
   private readonly notices = new Map<string, string>();
 
   constructor(private readonly options: EngineOptions) {}
+
+  /** Tells the agent something before its next turn in this Desk, such as the welcome message the Recruiter just got. */
+  tell(desk: string, notice: string): void {
+    this.notices.set(desk, notice);
+  }
 
   /**
    * Handles one input and sends each reply as soon as it is ready.
@@ -134,6 +147,8 @@ export class Engine {
   private async dispatch(desk: string, input: Input, send: (reply: Reply) => Promise<void>, hooks: TurnHooks): Promise<void> {
     if (input.kind === "tap" && input.data.startsWith("undo:")) return this.undo(desk, input.data.slice(5), send, hooks);
 
+    if (input.kind === "tap" && input.data.startsWith("niche:")) return this.approveNiche(desk, input.data, send, hooks);
+
     const text = input.kind === "text" ? input.text.trim() : "";
     if (HELP_REQUEST.test(text)) return send({ text: HELP });
     if (STOP_REQUEST.test(text)) {
@@ -148,6 +163,7 @@ export class Engine {
     if (prompt === undefined) return;
 
     const label = input.kind === "tap" ? input.data : text;
+    const niches = menuPrompt === undefined && input.kind === "text" ? readNiches(desk) : undefined;
     const answer = await this.turn(desk, prompt, label, hooks);
     const isRecap =
       menuPrompt === undefined &&
@@ -155,9 +171,50 @@ export class Engine {
       answer.sha !== null &&
       (input.kind === "tap" || (await this.options.versions.addsAttempt(desk)));
 
-    if (!isRecap) return send(toReply(answer.text, isMore));
+    if (!isRecap) {
+      return niches === undefined ? send(toReply(answer.text, isMore)) : this.afterNicheTurn(desk, niches, answer.text, send, hooks);
+    }
     await send({ text: answer.text, buttons: [[{ label: "Undo", data: `undo:${answer.sha}` }]] });
     if (!this.stopped.has(desk) && (this.waiting.get(desk) ?? 0) === 0) await this.sendNextCard(desk, send, hooks);
+  }
+
+  /** After a turn that wrote a Niche: it must match `DESK.md` (the agent gets one chance to fix it), then the Recruiter can approve it. */
+  private async afterNicheTurn(
+    desk: string,
+    before: Map<string, string>,
+    text: string,
+    send: (reply: Reply) => Promise<void>,
+    hooks: TurnHooks,
+  ): Promise<void> {
+    const changed = () => [...readNiches(desk)].filter(([slug, content]) => before.get(slug) !== content);
+    let reply = text;
+    const wrong = changed().flatMap(([slug, content]) => checkNiche(content).map((problem) => `niches/${slug}.md: ${problem}`));
+    if (wrong.length > 0) {
+      const fix = `The Niche file you just wrote does not match the format of DESK.md:\n- ${wrong.join("\n- ")}\nFix the file, then give the Recruiter your next message as before.`;
+      reply = (await this.turn(desk, fix, "fix niche", hooks)).text;
+    }
+    const ready = changed().filter(([, content]) => checkNiche(content).length === 0);
+    if (ready.length === 0) return send(toReply(reply, false));
+    const slug = ready[ready.length - 1][0];
+    return send({ text: reply, buttons: [[{ label: this.copy(desk).button, data: `niche:${slug}` }]] });
+  }
+
+  /** The Recruiter approved a Niche Profile: the first Batch starts and they are told they will hear when it is ready. */
+  private async approveNiche(desk: string, data: string, send: (reply: Reply) => Promise<void>, hooks: TurnHooks): Promise<void> {
+    const slug = NICHE_TAP.exec(data)?.[1];
+    if (slug === undefined || !existsSync(join(desk, "niches", `${slug}.md`))) return;
+    const answer = await this.turn(
+      desk,
+      `The Recruiter approved the Niche Profile of ${slug}. Start its first Batch now: run the search of the batch skill (step 1) for ${slug}, then stop once the search is running; the bot tells the Recruiter when it is ready.`,
+      `approve niche ${slug}`,
+      hooks,
+    );
+    await send({ text: existsSync(join(desk, "batches", `${slug}.md`)) ? this.copy(desk).started : answer.text });
+  }
+
+  private copy(desk: string) {
+    const language = this.options.registry.all().find((r) => r.desk === desk)?.language;
+    return APPROVE_COPY[language ?? "fr"] ?? APPROVE_COPY.fr;
   }
 
   private async undo(desk: string, sha: string, send: (reply: Reply) => Promise<void>, hooks: TurnHooks): Promise<void> {
@@ -223,4 +280,13 @@ function toReply(text: string, expanded: boolean): Reply {
   const number = PHONE_NUMBER.exec(text)?.[0];
   if (number !== undefined) rows.push([{ label: "Copy number", copy: number }]);
   return { text, buttons: rows };
+}
+
+/** The Niche files of a Desk, by slug. */
+function readNiches(desk: string): Map<string, string> {
+  const dir = join(desk, "niches");
+  const niches = new Map<string, string>();
+  if (!existsSync(dir)) return niches;
+  for (const file of readdirSync(dir).filter((f) => f.endsWith(".md"))) niches.set(file.slice(0, -3), readFileSync(join(dir, file), "utf8"));
+  return niches;
 }

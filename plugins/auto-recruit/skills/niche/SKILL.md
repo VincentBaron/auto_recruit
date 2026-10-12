@@ -38,3 +38,4 @@ Ask whether these are the people the Recruiter would call; tighten the criteria 
 Write `niches/<slug>.md` in the desk format, with the Pitches in the language of the calls.
 Done when every section is filled with checkable criteria and the Recruiter has approved the file.
 End by offering the first Batch: `/auto-recruit:batch <slug>`.
+In the Telegram bot, say you wrote the file and stop: the bot checks it against `DESK.md`, shows an approve button and starts the first Batch itself.

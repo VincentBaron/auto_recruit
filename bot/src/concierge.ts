@@ -44,10 +44,43 @@ const STRANGER_REPLY: Record<string, string> = {
   en: "Hello 👋 Auto Recruit is invitation-only for now. We will get back to you very soon!",
 };
 
+/** The first message of a new Desk: it ends with the first question of the niche discussion, and promises nothing about timing. */
 const WELCOME: Record<string, (name: string) => string> = {
-  fr: (name) => `Bonjour ${name} 👋 Votre espace Auto Recruit est prêt.`,
-  en: (name) => `Hello ${name} 👋 Your Auto Recruit Desk is ready.`,
+  fr: (name) =>
+    [
+      `Bonjour ${name} 👋`,
+      "Je suis Auto Recruit. Je trouve les entreprises qui recrutent et les candidats prêts à bouger dans votre niche, je trouve leur portable et je vous prépare quoi dire. Vous, vous appelez.",
+      "",
+      "Comment ça marche:",
+      "1. Vous me dites ce que vous placez - 5 minutes, ici, à l'écrit ou en vocal.",
+      "2. Je vous propose une vingtaine de personnes à appeler, chacune avec la raison de l'appeler maintenant. Vous gardez ou écartez d'un tap.",
+      "3. Je trouve leurs numéros et je vous envoie chaque fiche d'appel. Vous appelez, vous me racontez en vocal, je note tout et je prépare la suite.",
+      "",
+      "Chaque matin à 8h30, vos appels du jour arrivent ici.",
+      "On commence? Qu'est-ce que vous placez, et où? (ex: « des Forward Deployed Engineers à Paris, pour des startups IA série A à C »)",
+    ].join("\n"),
+  en: (name) =>
+    [
+      `Hello ${name} 👋`,
+      "I am Auto Recruit. I find the companies that are hiring and the candidates ready to move in your niche, I find their mobile numbers and I prepare what to say. You make the calls.",
+      "",
+      "How it works:",
+      "1. You tell me what you place - 5 minutes, here, in writing or by voice note.",
+      "2. I suggest about twenty people to call, each with the reason to call them now. You keep or skip each with a tap.",
+      "3. I find their numbers and send you each Call Sheet. You call, tell me about it by voice note, I write it all down and prepare what comes next.",
+      "",
+      "Every morning at 8:30, your calls of the day arrive here.",
+      "Shall we start? What do you place, and where? (e.g. \"Forward Deployed Engineers in Paris, for Series A to C AI startups\")",
+    ].join("\n"),
 };
+
+/** What the agent is told once, before the Recruiter's first answer, so the niche skill runs as a chat. */
+const NICHE_CHAT_NOTICE =
+  "This Recruiter just got the welcome message, which asked what they place and where. Their next message is the answer: run the niche skill as a chat from it. " +
+  "Ask one question per message with your recommended answer, short enough for a phone; they write or say their answers. " +
+  "For the calibration, show real people as short cards (name, title and company, the full LinkedIn URL on its own line), never a long list. " +
+  "When the Niche is settled, write niches/<slug>.md exactly in the DESK.md format and say you wrote it; the bot then offers an approve button. " +
+  "Do not start the Batch yourself: the bot starts it when the Recruiter approves.";
 
 /**
  * The front door of the bot: who gets in, who is turned away, Vincent's admin lines and the pings he gets.
@@ -118,7 +151,9 @@ export class Concierge {
     const language = languageOf(sender);
     registry.add({ channel, userId, desk, name, timezone: DEFAULT_TIMEZONE, language });
     await this.options.notifyAdmin(`✅ ${name} opened their invite: Desk #${n} created.`).catch(() => {});
-    return (WELCOME[language] ?? WELCOME.fr)(name.split(/\s+/)[0]);
+    this.options.engine.tell(desk, NICHE_CHAT_NOTICE);
+    const firstName = sender.name.trim().split(/\s+/)[0] || name.split(/\s+/)[0];
+    return (WELCOME[language] ?? WELCOME.fr)(firstName);
   }
 
   private async admin(command: AdminCommand): Promise<string> {

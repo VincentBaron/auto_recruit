@@ -11,6 +11,7 @@ A Telegram chat on top of the `auto-recruit` plugin (ADRs 0026 to 0028). One mes
 - `src/registry.ts`: `recruiters.json` in the data folder, a list of `{ "channel": "telegram", "userId": "123", "desk": "/srv/auto-recruit/desks/1", "name": "Camille Dupont", "timezone": "Europe/Paris", "language": "fr" }`. Invites append to it.
 - `src/concierge.ts`: the front door. Vincent's admin lines (`invite Camille Dupont`, `raise Camille to 6 Batches`, `give Camille €30 more for numbers`) work only from `ADMIN_TELEGRAM_ID`; `/start <code>` creates a Desk once; strangers get "On vous recontacte" and Vincent a ping; Allowance and failure pings go to Vincent.
 - `src/allowance.ts`: monthly Allowance per Desk (default 4 Batches, €50). A Batch starts when its `batches/*.md` file is created; spend is the `Phone: ... (Exa, date)` lines of the month times `PHONE_PRICE_EUR` (default 0.5). The tool gate refuses past it. Files `invites.json`, `allowances.json`, `enrichment-failures.json` live in the data folder.
+- `src/niche-file.ts`: checks a `niches/<slug>.md` against the `DESK.md` format. The first conversation: the concierge sends the welcome (Telegram first name and language, French by default) and tells the engine to run the `niche` skill as a chat; a Niche written in a turn is checked (one fix turn if wrong), then offered with an approve button; approving starts the first Batch and says the bot will write when it is ready.
 - `src/backup.ts`: pushes each Desk to its `origin`, a private GitHub repo.
 
 ## Run
