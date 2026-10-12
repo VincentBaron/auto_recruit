@@ -209,7 +209,7 @@ describe("strangers", () => {
 describe("admin lines only work from Vincent's account", () => {
   it("ignores them from a Recruiter or a stranger", async () => {
     const { concierge } = build();
-    await ask(concierge, "42", `/start ${await invite(concierge)}`, camille);
+    await onboard(concierge);
     turns.length = 0;
     expect(await ask(concierge, "42", "invite Mallory", camille)).toBe("ok");
     expect(turns[0].prompt).toContain("invite Mallory");
@@ -219,7 +219,7 @@ describe("admin lines only work from Vincent's account", () => {
 
   it("raises a Batch limit and adds euros for a named Recruiter", async () => {
     const { concierge, registry, allowances } = build();
-    await ask(concierge, "42", `/start ${await invite(concierge)}`, camille);
+    await onboard(concierge);
     const desk = registry.find("telegram", "42")!.desk;
     expect(await ask(concierge, ADMIN, "raise Camille to 6 Batches", { name: "V" })).toContain("6 Batches");
     expect(await ask(concierge, ADMIN, "give Camille €30 more for numbers", { name: "V" })).toContain("€80");
@@ -231,7 +231,7 @@ describe("admin lines only work from Vincent's account", () => {
 describe("Allowance pings", () => {
   it("tells Vincent once at 75% and once at 100%", async () => {
     const { concierge, registry, allowances } = build();
-    await ask(concierge, "42", `/start ${await invite(concierge)}`, camille);
+    await onboard(concierge);
     pings.length = 0;
     const desk = registry.find("telegram", "42")!.desk;
     for (let i = 0; i < 3; i++) allowances.recordBatchStart(desk);
@@ -249,7 +249,7 @@ describe("Allowance pings", () => {
 describe("failures", () => {
   it("pings Vincent when Enrichment fails twice for the same person, once", async () => {
     const { concierge, registry } = build();
-    await ask(concierge, "42", `/start ${await invite(concierge)}`, camille);
+    await onboard(concierge);
     pings.length = 0;
     const desk = registry.find("telegram", "42")!.desk;
     mkdirSync(join(desk, "candidates"));
