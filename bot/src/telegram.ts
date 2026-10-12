@@ -24,7 +24,7 @@ export interface TelegramUser {
 
 export interface TelegramUpdate {
   update_id: number;
-  message?: { chat: { id: number }; from?: TelegramUser; text?: string };
+  message?: { chat: { id: number }; from?: TelegramUser; text?: string; voice?: { file_id: string; duration?: number } };
   callback_query?: {
     id: string;
     from: TelegramUser;
@@ -45,6 +45,8 @@ const keyboard = (screen: Screen) => ({
 
 export interface TelegramApi {
   call(method: string, params?: Record<string, unknown>): Promise<unknown>;
+  /** The bytes of a file Telegram holds, by its file id. */
+  download?(fileId: string): Promise<Buffer>;
 }
 
 /** Handles one input from a user, sending each reply as soon as it is ready; sends nothing to an unknown user. */

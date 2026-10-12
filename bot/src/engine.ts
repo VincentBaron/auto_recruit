@@ -32,7 +32,11 @@ export interface Reply {
 }
 
 /** What a Recruiter did: typed (or said) something, or tapped a button of an earlier reply. */
-export type Input = { kind: "text"; text: string } | { kind: "tap"; data: string };
+export type Input =
+  | { kind: "text"; text: string }
+  | { kind: "tap"; data: string }
+  /** A voice note, downloaded only once the sender is known to have a Desk. */
+  | { kind: "voice"; audio: () => Promise<Buffer> };
 
 /** The Desk's git history, as far as the engine needs it to offer Undo. */
 export interface DeskVersions {
@@ -52,6 +56,8 @@ export interface EngineOptions {
   /** Commits what a turn changed in a Desk. */
   commit: (desk: string, message: string) => Promise<boolean>;
   versions: DeskVersions;
+  /** Turns a voice note into text; without it voice notes are refused. */
+  voice?: { transcribe(download: () => Promise<Buffer>, contextBias: string[]): Promise<string> };
 }
 
 /** The fixed menu under the keyboard. */
